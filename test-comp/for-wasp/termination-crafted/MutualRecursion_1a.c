@@ -1,0 +1,27 @@
+extern int __VERIFIER_nondet_int(char *);
+int f(int x);
+int g(int x);
+int f(int x)
+{
+  if (x <= 0)
+    return 0;
+  else
+    return g(x) + g(x + 1);
+
+}
+
+int g(int x)
+{
+  if (x <= 0)
+    return 0;
+  else
+    return f(x - 1) + f(x - 2);
+
+}
+
+int main()
+{
+  int x = __VERIFIER_nondet_int("x");
+  g(x);
+}
+

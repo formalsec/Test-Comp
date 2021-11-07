@@ -1,0 +1,108 @@
+extern void abort(void);
+void assume(int);
+void assert(int);
+void *alloc(void *, unsigned int);
+void dealloc(void *);
+int is_symbolic(void *, unsigned int);
+_Bool sym_bool(char *);
+int sym_int(char *);
+long long sym_long(char *);
+float sym_float(char *);
+double sym_double(char *);
+int __logand(int a, int b);
+int __logor(int a, int b);
+int __ternary(int c, int r1, int r0);
+void reach_error()
+{
+  assert(0);
+}
+
+void __VERIFIER_assert(int cond)
+{
+  if (!cond)
+  {
+    ERROR:
+    {
+      reach_error();
+      abort();
+    }
+
+  }
+
+}
+
+extern int __VERIFIER_nondet_int(char *);
+int main()
+{
+  int a1[100000];
+  int a2[100000];
+  int a3[100000];
+  int a4[100000];
+  int a5[100000];
+  int a6[100000];
+  int a7[100000];
+  int a8[100000];
+  int a9[100000];
+  int a0[100000];
+  int a;
+  for (a = 0; a < 100000; a++)
+  {
+    a1[a] = __VERIFIER_nondet_int("a1[a]");
+    a9[a] = __VERIFIER_nondet_int("a9[a]");
+  }
+
+  int i;
+  for (i = 0; i < 100000; i++)
+  {
+    a2[i] = a1[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a3[i] = a2[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a4[i] = a3[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a5[i] = a4[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a6[i] = a5[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a7[i] = a6[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a8[i] = a7[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a0[i] = a8[i];
+  }
+
+  for (i = 0; i < 100000; i++)
+  {
+    a0[i] = a9[i];
+  }
+
+  int x;
+  for (x = 0; x < 100000; x++)
+  {
+    __VERIFIER_assert(a1[x] == a0[x]);
+  }
+
+  return 0;
+}
+
