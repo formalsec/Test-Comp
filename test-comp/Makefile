@@ -1,3 +1,4 @@
+LIBC=bin/libc.a
 BUILD=_build
 
 ARRAY=array-cav19 array-crafted array-examples array-fpi array-industry-pattern array-lopstr16 array-multidimensional array-patterns array-programs array-tiling
@@ -30,15 +31,15 @@ all: build $(TARGET)
 
 $(TARGET):
 	mkdir -p $(BUILD)
-	$(MAKE) -C for-wasp/$@ -j12
+	$(MAKE) -C for-wasp/$@ -j$(THREADS)
 
 build:
 	@rm -v -rf for-wasp
 	@cp -v -R original for-wasp
-	@python3 ./scripts/for_wasp.py 12
+	@python3 ./scripts/for_wasp.py $(THREADS)
 
 run:
 	@python3 -m validator $(THREADS)
 
 clean:
-	$(RM) -rf $(BUILD)
+	$(RM) -rf $(BUILD) $(LIBC)
