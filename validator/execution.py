@@ -36,18 +36,19 @@ class WASP:
     def limit_ram(limit):
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
-    def cmd(self, testFile):
+    def cmd(self, testFile, out_dir):
         return [
-            f'./{self.binPath}/wasp',
+            'wasp',
             testFile,
             '-e',
             '(invoke \"__original_main\")',
             '-m',
             str(self.instrLimit),
             '-u',
+            '-r', out_dir
         ]
 
-    def run(self, testFile, instrLimit=None, timeLimit=None):
+    def run(self, testFile, out_dir, instrLimit=None, timeLimit=None):
         # set options
         self.setInstrLimit(instrLimit)
         self.setTimeLimit(timeLimit)
@@ -59,7 +60,7 @@ class WASP:
         timeout = False
         try: 
             output = subprocess.check_output(
-                    self.cmd(testFile),
+                    self.cmd(testFile, out_dir),
                     timeout=self.getTimeLimit(), 
                     stderr=subprocess.STDOUT,
                     preexec_fn=(lambda: WASP.limit_ram(self.getMemoryLimit()))

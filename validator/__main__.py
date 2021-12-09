@@ -1,24 +1,27 @@
 import os
+import sys
 import glob
 import json
 import subprocess
 
 from threading import (Thread, Lock)
 
-from validator.tables import test_dict, WATPATH
+from validator.tables import test_dict, WATPATH, PROP
 from validator.logger import logger as logging
 from validator.parser import parser
 from validator.execution import WASP
 from validator.generators import (XMLSuiteGenerator, CSVTableGenerator)
 
-def t_testcov(i, lock, tblWriter, analyser):
+def t_testcov(i, lock, tblWriter, analyser, sz):
     global srcs
+    global counter
 
     while True:
 
         try:
             lock.acquire()
             data = srcs.pop()
+            counter += 1
         except IndexError:
             break
         finally:
@@ -30,13 +33,13 @@ def t_testcov(i, lock, tblWriter, analyser):
             original = test.replace(f'{WATPATH}', 'original').replace('.wat', '.c')
         test_suite = test.replace(f'{WATPATH}', f'test-suite/{prop}').replace('.wat', '.c.zip')
         if os.path.exists(test_suite) and (not os.path.exists(test_suite.replace(".zip", ""))):
-            logging.info(f'Thread {i}: running TestCov on \'{original}\'.')
+            logging.info(f'Thread {i}: running TestCov on \'{original}\' ({counter}/{sz})')
             testCov(original, test_suite, prop)
 
 def testCov(original, test_suite, prop):
     try:
         subprocess.check_output([
-            '../../test-suite-validator/bin/testcov',
+            '../test-suite-validator/bin/testcov',
             '--memlimit', '6GB',
             '--timelimit-per-run', '3',
             '--no-plots',
@@ -63,8 +66,9 @@ def get_test_suite(testsuite):
                 continue
     return ret
  
-def t_wasp(i, lock, tblWriter, analyser):
+def t_wasp(i, lock, tblWriter, analyser, sz):
     global srcs
+    global counter 
 
     while True:
         # We know cover error is alwasy false
@@ -74,6 +78,7 @@ def t_wasp(i, lock, tblWriter, analyser):
         try:
             lock.acquire()
             data = srcs.pop()
+            counter += 1
         except IndexError:
             break
         finally:
@@ -86,11 +91,11 @@ def t_wasp(i, lock, tblWriter, analyser):
 
         test_suite = 'test-suite/{}/{}.zip'.format(prop, \
                 test.replace(f'{WATPATH}/', '').replace('.wat', '.c'))
-        out_dir = f'output/{os.path.basename(test)}'
+        out_dir = os.path.join('output', os.path.basename(test))
         if os.path.exists(test_suite):
             continue
 
-        result = analyser.run(test)
+        result = analyser.run(test, out_dir)
         if result.timeout:
             ret = 'Timeout'
         elif result.crashed:
@@ -106,8 +111,8 @@ def t_wasp(i, lock, tblWriter, analyser):
 
         # Timeout does not generate report, but we still have testcases
         if not result.crashed:
-            error = get_test_suite(glob.glob(f'{out_dir}/witness_*.json'))
-            tests = get_test_suite(glob.glob(f'{out_dir}/test_*.json'))
+            error = get_test_suite(glob.glob(f'{out_dir}/test_suite/witness_*.json'))
+            tests = get_test_suite(glob.glob(f'{out_dir}/test_suite/test_*.json'))
             suite = XMLSuiteGenerator(
                     'WASP', 
                     test.replace('_build', 'original').replace('.wat','.c'), 
@@ -127,10 +132,11 @@ def t_wasp(i, lock, tblWriter, analyser):
         ])
         lock.release()
 
-        logging.info(f'Thread {i}: Ran \'{test}\' in {time}s -> ret={ret}')
+        logging.info(f'Thread {i}: Ran \'{test}\' in {time}s -> ret={ret} ({counter}/{sz})')
 
-def main(n_threads, analyser, task):
+def main(n_threads, analyser, task, prop, categories):
     global srcs
+    global counter
 
     lock = Lock()
     tblWriter = CSVTableGenerator(['test', 'answer', 'verdict', 'complete', 'time'])
@@ -140,16 +146,24 @@ def main(n_threads, analyser, task):
     logging.info(f'Using timeout={analyser.getTimeLimit()}s')
     logging.info(f'Using instrLimit={analyser.getInstrLimit()}')
 
+    visited = []
     for cat, dirPropPair in test_dict.items():
+        
+        if not (cat in categories):
+            continue
 
+        logging.info(f'Categories remaining: {len(categories) - len(visited)}')
+
+        counter = -1
         srcs = list()
         for pair in dirPropPair:
-            dirFmt, prop = pair[0], pair[1]
+            dirFmt = pair[0]
             srcs = srcs + list(map(lambda t: (t, prop), glob.glob(f'{dirFmt}.wat')))
 
         threads = []
+        size = len(srcs)
         for i in range(n_threads):
-            t = Thread(target=task, args=(i, lock, tblWriter, analyser,))
+            t = Thread(target=task, args=(i, lock, tblWriter, analyser, size,))
             threads.append(t)
             t.start()
 
@@ -157,11 +171,27 @@ def main(n_threads, analyser, task):
             t.join()
 
         if n_threads != 1:
-            tblWriter.write(f'results/{cat}_t{analyser.getTimeLimit()}_im{analyser.getInstrLimit()}.csv')
+            #tblWriter.write(f'results/{cat}_t{analyser.getTimeLimit()}_im{analyser.getInstrLimit()}.csv')
             tblWriter.clearTable()
+
+        visited.append(cat)
 
 if __name__ == '__main__':
     args = parser.parse_args()
     analyser = WASP('../wasp', timeLimit=900)
-    main(args.n_threads, analyser, t_wasp)
-    main(1, analyser, t_testcov)
+
+    prop = ''
+    if args.task == 'branches':
+        prop = 'coverage-branches'
+    elif args.task == 'error':
+        prop = 'coverage-error-call'
+    else:
+        logging.error('Invalid task type')
+        sys.exit(1)
+
+    categories = test_dict.keys()
+    if args.category != 'all':
+        categories = [args.category]
+
+    main(args.n_threads, analyser, t_wasp, prop, categories)
+    main(1, analyser, t_testcov, prop, categories)

@@ -153,30 +153,46 @@ def getLoopTime(test):
             return 0.0
 
 
-def main(argc, argv):
+def main(argv):
     global cnt
 
-    if argc != 2:
+    if argv == [] or len(argv) != 2:
         print('ERR: Invalid number of arguments.')
         return 1
 
-    target = argv[1]
+    target = argv[0]
     if not os.path.isdir(target):
         print('ERR: argument is not a directory.')
         return 1
 
+    prop = ''
+    if argv[1] == 'branches':
+        PROP = 'coverage-branches'
+    elif argv[1] == 'error':
+        PROP = 'coverage-error-call'
+    else:
+        print('ERR: invalid property')
+        return 1
+
+    print('Category,WASP,Time')
     for cat, dirPropPair in test_dict.items():
         cnt = 0
 
-        cov = sum(map(lambda p : sum(map(getCoverageOfDir, 
+        cov = 0.0
+        if PROP == 'coverage-branches':
+            cov = sum(map(lambda p : sum(map(getCoverageOfDir, 
                                          listFilterDirs(p[0].replace(WATPATH, target) + ".c"))), 
-                      dirPropPair))
+                          dirPropPair))
+        else:
+            cov = sum(map(lambda p : sum(map(getCoverageCall,
+                                         listFilterDirs(p[0].replace(WATPATH, target) + ".c"))), 
+                          dirPropPair))
         time = sum(map(lambda p : sum(map(getLoopTime,
                                           glob.glob(p[0].replace(WATPATH, 'for-wasp') + '.c'))),
                        dirPropPair))
 
-        print(f'{cat}->{cov}/{cnt} in {time}')
+        print(f'{cat},{cov}/{cnt},{time}')
     return 0
 
 if __name__ == '__main__':
-    main(len(sys.argv), sys.argv)
+    main(sys.argv[1:])
