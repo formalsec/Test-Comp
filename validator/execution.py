@@ -36,7 +36,10 @@ class WASP:
     def limit_ram(limit):
         resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
-    def cmd(self, testFile, out_dir):
+    def cmd(self, testFile, out_dir, prop):
+        args = []
+        if prop == 'coverage-branches':
+            args = ['-b']
         return [
             'wasp',
             testFile,
@@ -46,9 +49,9 @@ class WASP:
             str(self.instrLimit),
             '-u',
             '-r', out_dir
-        ]
+        ] + args
 
-    def run(self, testFile, out_dir, instrLimit=None, timeLimit=None):
+    def run(self, testFile, out_dir, prop, instrLimit=None, timeLimit=None):
         # set options
         self.setInstrLimit(instrLimit)
         self.setTimeLimit(timeLimit)
@@ -60,7 +63,7 @@ class WASP:
         timeout = False
         try: 
             output = subprocess.check_output(
-                    self.cmd(testFile, out_dir),
+                    self.cmd(testFile, out_dir, prop),
                     timeout=self.getTimeLimit(), 
                     stderr=subprocess.STDOUT,
                     preexec_fn=(lambda: WASP.limit_ram(self.getMemoryLimit()))

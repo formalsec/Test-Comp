@@ -95,7 +95,7 @@ def t_wasp(i, lock, tblWriter, analyser, sz):
         if os.path.exists(test_suite):
             continue
 
-        result = analyser.run(test, out_dir)
+        result = analyser.run(test, out_dir, prop)
         if result.timeout:
             ret = 'Timeout'
         elif result.crashed:
@@ -119,7 +119,9 @@ def t_wasp(i, lock, tblWriter, analyser, sz):
                     prop,
                     error + tests
                 )
+            lock.acquire()
             suite.write(test_suite)
+            lock.release()
 
         time = round(result.time, 2)
         lock.acquire()
