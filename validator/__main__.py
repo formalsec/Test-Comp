@@ -193,6 +193,9 @@ if __name__ == '__main__':
 
     categories = test_dict.keys()
     if args.category != 'all':
+        if not (args.category in categories):
+            logging.info(f'Invalid category \'{args.category}\' not in {str(categories)}.')
+            sys.exit(1)
         categories = [args.category]
 
     main(args.n_threads, analyser, t_wasp, prop, categories)
