@@ -387,7 +387,7 @@ void *main_thread(void *arg)
 
 }
 
-int main(int argc, char **argv)
+int main()
 {
   unsigned char __CS_cp___CS_thread_status[6][2 + 1];
   unsigned char *__CS_cp___CS_thread_lockedon[6][2 + 1];

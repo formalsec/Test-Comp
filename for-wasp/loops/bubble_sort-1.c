@@ -67,7 +67,7 @@ void bubblesort1(int size, int item[])
 }
 
 int __VERIFIER_nondet_int(char *);
-void q1(int argc, char *argv[])
+void q1(int argc)
 {
   if (argc < 2)
     return;
@@ -108,9 +108,10 @@ void q1(int argc, char *argv[])
   bubblesort(N, a);
 }
 
-int main(int argc, char *argv[])
+int main()
 {
-  q1(argc, argv);
+  int argc = __VERIFIER_nondet_int("argc");
+  q1(argc);
   return 0;
 }
 

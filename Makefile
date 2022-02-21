@@ -36,7 +36,7 @@ $(TARGET):
 build:
 	@rm -v -rf for-wasp
 	@cp -v -R original for-wasp
-	@python3 ./scripts/for_wasp.py $(THREADS)
+	@./scripts/patch_c.py $(THREADS)
 
 run:
 	@python3 -m validator $(THREADS)

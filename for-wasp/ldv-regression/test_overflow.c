@@ -14,7 +14,7 @@ ssize_t getService();
 int globalSize;
 
 int
-main(int argc, char* argv[]) {
+main() {
  long int retVal;
  retVal = getService();
  ((sizeof(retVal)==globalSize) ? (0) : __blast_assert ());

@@ -5,7 +5,7 @@ void reach_error()
   __assert_fail("0", "heavy-2.c", 3, "reach_error");
 }
 
-int main(int argc, char **argv)
+int main()
 {
   static char array[1024 * 1024] = {1};
   unsigned int a = 1;

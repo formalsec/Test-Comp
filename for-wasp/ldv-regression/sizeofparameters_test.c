@@ -18,7 +18,7 @@ void __blast_assert()
 
 void foo();
 int globalSize;
-int main(int argc, char *argv[])
+int main()
 {
   long int a = __VERIFIER_nondet_long("a");
   globalSize = sizeof(a);

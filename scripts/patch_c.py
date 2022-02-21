@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-from threading import Thread
 import os
 import sys
 import glob
 import comby as cby
+
+from threading import Thread
 
 patterns = [
         (':[[h1]] __VERIFIER_nondet_:[[h2]](:[_])', \
@@ -126,22 +127,23 @@ def transform(i, test):
             pattern[0], 
             pattern[1],
             language='.c',
-            args=dict(timeout=100,sequential='')
+            args=dict(timeout=100, sequential='')
         )
 
     with open(test, 'w') as f:
         f.write(data)
 
-def main(argc, argv):
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
+
     n_threads = 1
-    if argv[1] is not None:
-        n_threads = int(argv[1])
-
+    n_threads = int(argv[0]) if not (argv[0] is None) \
+                             else 1
     for dir in dirs:
-        tests = glob.glob(f'{dir}/*.c')
 
+        tests = glob.glob(os.path.join(dir, '*.c'))
         while tests:
-
             threads = []
             for i in range(n_threads):
                 try:
@@ -154,6 +156,7 @@ def main(argc, argv):
 
             for t in threads:
                 t.join()
-            
+    return 0
+
 if __name__ == '__main__':
-    main(len(sys.argv), sys.argv)
+    sys.exit(main())

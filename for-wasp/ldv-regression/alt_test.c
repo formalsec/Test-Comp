@@ -70,7 +70,7 @@ void __blast_assert()
 int globalState = 0;
 void *l_malloc(int);
 void l_free(void *);
-int main(int argc, char *argv[])
+int main()
 {
   int *a = (int *) l_malloc(sizeof(int));
   l_free(a);
