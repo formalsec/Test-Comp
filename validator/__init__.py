@@ -7,114 +7,188 @@ import subprocess
 
 from threading import Thread, Lock
 
-from validator.tables import test_dict, WATPATH, PROP
-from validator.logger import log
-from validator.parser import parser
+from validator.tables import test_dict, WATPATH
+from validator.logger import progress, warn, info, indent
 from validator.execution import WASP
-from validator.generators import (XMLSuiteGenerator, CSVTableGenerator)
+from validator.generators import XMLSuiteGenerator, CSVTableGenerator
 
 # Globals
-def t_testcov(i, lock, tblWriter, analyser, sz):
-    global srcs
-    global counter
+def t_testcov(analyser, csv_writer, lock, size):
+    global prev
+    global tests_props 
 
     while True:
-
         try:
             lock.acquire()
-            data = srcs.pop()
-            counter += 1
+            test, prop = tests_props.pop()
+            prev = progress(
+                f'Running {test}...',
+                size - len(tests_props),
+                size,
+                prev=prev
+            )
         except IndexError:
             break
         finally:
             lock.release()
 
-        test, prop = data[0], data[1]
-        original = test.replace(f'{WATPATH}', 'original').replace('.wat', '.i')
+        original = test.replace(f'{WATPATH}', 'original')\
+                       .replace('.wat', '.i')
         if not os.path.exists(original):
             original = test.replace(f'{WATPATH}', 'original').replace('.wat', '.c')
-        test_suite = test.replace(f'{WATPATH}', f'test-suite/{prop}').replace('.wat', '.c.zip')
-        if os.path.exists(test_suite) and (not os.path.exists(test_suite.replace(".zip", ""))):
-            logging.info(f'Thread {i}: running TestCov on \'{original}\' ({counter}/{sz})')
-            testCov(original, test_suite, prop)
 
-def testCov(original, test_suite, prop):
+        testsuite = test.replace(f'{WATPATH}', f'test-suite/{prop}')\
+                         .replace('.wat', '.c.zip')
+        if os.path.exists(testsuite) and (not os.path.exists(testsuite.replace(".zip", ""))):
+            testCov(original, testsuite, prop)
+
+def testCov(original, testsuite, prop):
     try:
         subprocess.check_output([
-            '../test-suite-validator/bin/testcov',
+            '/home/fmarques/test-suite-validator/bin/testcov',
             '--memlimit', '6GB',
             '--timelimit-per-run', '3',
             '--no-plots',
             '--no-isolation',
-            '--output', f'{test_suite.replace(".zip", "")}',
+            '--output', f'{testsuite.replace(".zip", "")}',
             '--results-format', 'csv',
-            '--test-suite', test_suite,
+            '--test-suite', testsuite,
             '-32', '--goal', f'original/properties/{prop}.prp',
             original
         ], timeout=300)
     except subprocess.CalledProcessError:
-        logging.info(f'testCov: error: {original}')
+        warn(f'testCov: error: {original}')
     except subprocess.TimeoutExpired:
-        logging.info(f'testCov: timeout: {original}')
+        warn(f'testCov: timeout: {original}')
 
 def get_test_suite(testsuite):
     ret = []
     for testcase in testsuite:
-        with open(testcase, 'r') as f:
-            try:
-                testcase_json = json.load(f)
-                ret.append(filter(lambda t : not (('__hb' in t['name']) and ('ternary' in t['name'])), testcase_json))
-            except json.decoder.JSONDecodeError:
-                continue
+        try:
+            with open(testcase, 'r') as f:
+                tests = json.load(f)
+                tests = filter(
+                    lambda t: not (('__hb' in t['name']) or \
+                                   ('ternary' in t['name'])),
+                    tests
+                )
+                ret.append(tests)
+        except json.decoder.JSONDecodeError:
+            pass
     return ret
- 
-def t_wasp(i, lock, tblWriter, analyser, sz):
-    global srcs
-    global counter 
+
+def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
+    global prev
+    global tests
 
     while True:
-        # We know cover error is alwasy false
-        verdict  = False
-        complete = False
 
         try:
             lock.acquire()
-            data = srcs.pop()
-            counter += 1
+            test = tests.pop()
+            prev = progress(
+                f'Running {test}...',
+                size - len(tests),
+                size,
+                prev=prev
+            )
         except IndexError:
             break
         finally:
             lock.release()
 
-        test, prop = data[0], data[1]
+        test_suite = os.path.join(
+            'test-suite',
+            os.path.basename(test_list),
+            test.replace(f'{WATPATH}/', '').replace('.wat', '.c') + '.zip'
+        )
+        if os.path.exists(test_suite):
+            continue
+
+        answer, complete = None, False
+        output_dir = os.path.join('output', os.path.basename(test))
+        result = analyser.run(test, output_dir, 'cover-error-call')
+        if result.timeout:
+            answer = 'Timeout'
+        elif result.crashed:
+            answer = 'Crash'
+        else:
+            report_path = os.path.join(output_dir, 'report.json')
+            try:
+                with open(report_path, 'r') as f:
+                    report = json.load(f)
+                    answer = str(report['specification'])
+                    complete = not report['incomplete']
+            except json.decoder.JSONDecodeError:
+                warn(f'Cannot read report \'{report_path}\'!')
+
+        runtime = round(result.runtime, 2)
+        lock.acquire()
+        csv_writer.add_row([
+            result.file,
+            answer,
+            complete,
+            runtime
+        ])
+        lock.release()
+
+
+
+def t_wasp(analyser, csv_writer, lock, size):
+    global prev
+    global tests_props 
+
+    while True:
+
+        try:
+            lock.acquire()
+            test, prop = tests_props.pop()
+            prev = progress(
+                f'Running {test}...',
+                size - len(tests_props),
+                size,
+                prev=prev
+            )
+        except IndexError:
+            break
+        finally:
+            lock.release()
+
         with open(test.replace('.wat', '.yml'), 'r') as file:
             if prop not in file.read():
                 continue
 
-        test_suite = 'test-suite/{}/{}.zip'.format(prop, \
-                test.replace(f'{WATPATH}/', '').replace('.wat', '.c'))
-        out_dir = os.path.join('output', os.path.basename(test))
+        test_suite = os.path.join(
+            'test-suite',
+            prop,
+            test.replace(f'{WATPATH}/', '').replace('.wat', '.c') + '.zip'
+        )
         if os.path.exists(test_suite):
             continue
 
-        result = analyser.run(test, out_dir, prop)
+        answer, complete = None, False
+        output_dir = os.path.join('output', os.path.basename(test))
+        result = analyser.run(test, output_dir, prop)
         if result.timeout:
-            ret = 'Timeout'
+            answer = 'Timeout'
         elif result.crashed:
-            ret = 'Crash'
+            answer = 'Crash'
         else:
-            with open(f'{out_dir}/report.json', 'r') as f:
-                try:
+            report_path = os.path.join(output_dir, 'report.json')
+            try:
+                with open(report_path, 'r') as f:
                     report = json.load(f)
-                    ret = str(report['specification'])
+                    answer = str(report['specification'])
                     complete = not report['incomplete']
-                except json.decoder.JSONDecodeError:
-                    logging.info(f'Thread {i}: Can not read report \'{out_dir}/report.json\'.')
+            except json.decoder.JSONDecodeError:
+                warn(f'Cannot read report \'{report_path}\'!')
 
         # Timeout does not generate report, but we still have testcases
         if not result.crashed:
-            error = get_test_suite(glob.glob(f'{out_dir}/test_suite/witness_*.json'))
-            tests = get_test_suite(glob.glob(f'{out_dir}/test_suite/test_*.json'))
+            witnesses = os.path.join(output_dir, 'test_suite', 'witness_*.json')
+            error = get_test_suite(glob.glob(witnesses))
+            testcases = os.path.join(output_dir, 'test_suite', 'test_*,json')
+            tests = get_test_suite(glob.glob(testcases))
             suite = XMLSuiteGenerator(
                     'WASP', 
                     test.replace('_build', 'original').replace('.wat','.c'), 
@@ -125,60 +199,94 @@ def t_wasp(i, lock, tblWriter, analyser, sz):
             suite.write(test_suite)
             lock.release()
 
-        time = round(result.time, 2)
+        runtime = round(result.runtime, 2)
         lock.acquire()
-        tblWriter.addRow([
-            result.fileName,
-            ret,
-            verdict,
+        csv_writer.add_row([
+            result.file,
+            answer,
             complete,
-            time
+            runtime
         ])
         lock.release()
 
-        logging.info(f'Thread {i}: Ran \'{test}\' in {time}s -> ret={ret} ({counter}/{sz})')
+def run(analyser, n_jobs, task, prop, categories, tool):
+    global prev
+    global tests_props 
 
-def run(n_threads, analyser, task, prop, categories):
-    global srcs
-    global counter
+    info(f'Starting Test-Comp Benchmarks...')
+    info(f'jobs={n_jobs}')
+    info(f'property={prop}')
+    info(f'n_categories={len(categories)}')
 
-    lock = Lock()
-    tblWriter = CSVTableGenerator(['test', 'answer', 'verdict', 'complete', 'time'])
+    results = 'results'
+    if not os.path.exists(results):
+        os.makedirs(results)
 
-    logging.info('Starting Test-Comp Benchmarks...')
-    logging.info(f'Using {n_threads} thread(s)')
-    logging.info(f'Using timeout={analyser.getTimeLimit()}s')
-    logging.info(f'Using instrLimit={analyser.getInstrLimit()}')
+    visited, lock = [], Lock()
+    for cat, dirs in test_dict.items():
 
-    visited = []
-    for cat, dirPropPair in test_dict.items():
-        
         if not (cat in categories):
             continue
 
-        logging.info(f'Categories remaining: {len(categories) - len(visited)}')
+        csv_writer = None
+        if tool:
+            csv_writer = CSVTableGenerator(
+                file=os.path.join(results, f'result_{cat}_{tool}.csv'),
+                header=['test', 'answer', 'is_complete', 't_wasp'],
+                memory=False
+            )
+        info(f'Categories remaining: {len(categories) - len(visited)}')
 
-        counter = -1
-        srcs = list()
-        for pair in dirPropPair:
-            dirFmt = pair[0]
-            srcs = srcs + list(map(lambda t: (t, prop), glob.glob(f'{dirFmt}.wat')))
+        tests_props, prev = [], 0
+        for fmt, _ in dirs:
+            tests = glob.glob(fmt + '.wat')
+            tests_props += list(map(lambda t: (t, prop), tests))
 
-        threads = []
-        size = len(srcs)
-        for i in range(n_threads):
-            t = Thread(target=task, args=(i, lock, tblWriter, analyser, size,))
+        threads, size = [], len(tests_props)
+        for i in range(n_jobs):
+            t = Thread(target=task, args=(analyser, csv_writer, lock, size,))
             threads.append(t)
             t.start()
 
         for t in threads:
             t.join()
 
-        if n_threads != 1:
-            #tblWriter.write(f'results/{cat}_t{analyser.getTimeLimit()}_im{analyser.getInstrLimit()}.csv')
-            tblWriter.clearTable()
-
+        if tool:
+            csv_writer.commit()
         visited.append(cat)
+
+def run_list(analyser, n_jobs, task, test_list):
+    global prev
+    global tests
+
+    info(f'Running tests in \'{test_list}\'...')
+    info(f'jobs={n_jobs}')
+
+    results = 'results'
+    if not os.path.exists(results):
+        os.makedirs(results)
+
+    csv_writer = CSVTableGenerator(
+        file=os.path.join(results, f'result_{test_list}.csv'),
+        header=['test', 'answer', 'is_complete', 't_wasp'],
+        memory=False
+    )
+
+    tests, prev = [], 0
+    with open(test_list, 'r') as f:
+        tests = f.read().splitlines()
+
+    threads, lock = [], Lock()
+    for i in range(n_jobs):
+        t = Thread(target=task, args=(analyser, csv_writer, lock, len(tests),
+                                      test_list,))
+        threads.append(t)
+        t.start()
+
+    for t in threads:
+        t.join()
+
+    csv_writer.commit()
 
 def get_parser():
     parser = argparse.ArgumentParser(
@@ -190,8 +298,8 @@ def get_parser():
         '-j',
         '--jobs',
         dest='jobs',
-        action='store_int',
-        default=1,
+        action='store',
+        default='1',
         help='number of jobs to use'
     )
 
@@ -211,6 +319,14 @@ def get_parser():
         help='run Cover-Error benchmarks'
     )
 
+    parser.add_argument(
+        '--test-list',
+        dest='test_list',
+        action='store',
+        default=None,
+        help='use test list instead of Test-Comp default categories'
+    )
+
     parser.add_argument('category', help='category to run')
 
     return parser
@@ -228,26 +344,26 @@ def main(argv=None):
         prop = 'coverage-branches'
     elif args.error:
         prop = 'coverage-error-call'
-    else:
-        log.warn('No property specified')
+    elif not args.test_list:
+        warn('No property specified')
         return -1
 
     if args.category == 'all':
         categories = test_dict.keys()
     else:
-        if not os.path.exists(args.category):
-            log.warn(f'Category \'{args.category}\' not found!')
-            return -1
-        elif not (args.category in test_dict.keys()):
-            log.warn('Specified category not in benchmark data set!')
+        if not (args.category in test_dict.keys()):
+            warn('Specified category not in benchmark data set!')
             return -1
         categories = [args.category]
 
-    analyser = WASP()
-    run(args.jobs, analyser, t_wasp, prop, categories) 
-    run(1, analyser, t_testcov, prop, categories)
+    analyser, jobs = WASP(), int(args.jobs)
+    if not args.test_list:
+        run(analyser, jobs , t_wasp   , prop, categories, 'WASP')
+        run(analyser, 1    , t_testcov, prop, categories, None)
+    else:
+        if not os.path.exists(args.test_list):
+            warn(f'File \'{args.test_list}\' not found!')
+            return 1
+        run_list(analyser, jobs, t_wasp_simpl, args.test_list)
 
     return 0
-
-if __name__ == '__main__':
-    sys.exit(main())

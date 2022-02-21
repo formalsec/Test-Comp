@@ -4,9 +4,9 @@ import os
 import sys
 
 patterns = [
-    ('call \$assume'                        , 'sym_assume'),
-    ('call \$assume_abort_if_not'           , 'sym_assume'),
-    ('call \$assume_cycle_if_not'           , 'sym_assume'),
+    (r'call \$assume$'                      , 'sym_assume'),
+    (r'call \$assume_abort_if_not$'         , 'sym_assume'),
+    (r'call \$assume_cycle_if_not$'         , 'sym_assume'),
     ('call \$assert'                        , 'sym_assert'),
     ('call \$sym_int'                       , 'i32.symbolic'),
     ('call \$sym_long'                      ,'i64.symbolic'),
