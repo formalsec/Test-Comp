@@ -5,12 +5,16 @@ import subprocess
 class WASP:
     def __init__(
             self, 
+            smt_assume=False,
+            simplify=True,
             instr_limit=-1,
             # default 15mins
-            time_limit=900,
+            time_limit=1800,
             # default 15Gib
             mem_limit=15*1024*1024*1024
         ):
+        self.smt_assume = smt_assume
+        self.simplify = simplify
         self.instr_limit = instr_limit
         self.time_limit = time_limit
         self.mem_limit = mem_limit
@@ -23,12 +27,16 @@ class WASP:
         args = []
         if property == 'coverage-branches':
             args.append('-b')
+        if self.smt_assume:
+            args.append('--smt-assume')
+        if not self.simplify:
+            args.append('--no-simplify')
         return [
             'wasp', file,
             '-u',
             '-e', '(invoke \"__original_main\")',
             '-m', str(self.instr_limit),
-            '-r', output_dir 
+            '--workspace', output_dir,
         ] + args
 
     def run(self, file, output_dir, property):

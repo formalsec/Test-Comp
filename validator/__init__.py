@@ -105,12 +105,13 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
         if os.path.exists(test_suite):
             continue
 
+        solver_time = 0.0
+        n_paths = 0
+        instructions = 0
         answer, complete = None, False
         output_dir = os.path.join('output', os.path.basename(test))
         result = analyser.run(test, output_dir, 'cover-error-call')
-        if result.timeout:
-            answer = 'Timeout'
-        elif result.crashed:
+        if result.crashed:
             answer = 'Crash'
         else:
             report_path = os.path.join(output_dir, 'report.json')
@@ -118,9 +119,12 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
                 with open(report_path, 'r') as f:
                     report = json.load(f)
                     answer = str(report['specification'])
+                    solver_time = float(report['solver_time'])
+                    n_paths = report['paths_explored']
+                    instructions = report['instruction_counter']
                     complete = not report['incomplete']
-            except json.decoder.JSONDecodeError:
-                warn(f'Cannot read report \'{report_path}\'!')
+            except (json.decoder.JSONDecodeError, FileNotFoundError):
+                warn(f'Cannot read report \'{report_path}\'!', prefix='\n')
 
         runtime = round(result.runtime, 2)
         lock.acquire()
@@ -128,7 +132,10 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
             result.file,
             answer,
             complete,
-            runtime
+            runtime,
+            solver_time,
+            n_paths,
+            instructions
         ])
         lock.release()
 
@@ -255,7 +262,7 @@ def run(analyser, n_jobs, task, prop, categories, tool):
             csv_writer.commit()
         visited.append(cat)
 
-def run_list(analyser, n_jobs, task, test_list):
+def run_list(analyser, n_jobs, task, test_list, output):
     global prev
     global tests
 
@@ -267,8 +274,8 @@ def run_list(analyser, n_jobs, task, test_list):
         os.makedirs(results)
 
     csv_writer = CSVTableGenerator(
-        file=os.path.join(results, f'result_{test_list}.csv'),
-        header=['test', 'answer', 'is_complete', 't_wasp'],
+        file=output,
+        header=['test', 'answer', 'is_complete', 't_wasp', 't_solver', 'n_paths', 'instructions'],
         memory=False
     )
 
@@ -327,6 +334,30 @@ def get_parser():
         help='use test list instead of Test-Comp default categories'
     )
 
+    parser.add_argument(
+        '--output',
+        dest='output',
+        action='store',
+        default='results/results.csv',
+        help='path to the results file'
+    )
+
+    parser.add_argument(
+        '--smt-assume',
+        dest='smt_assume',
+        action='store_true',
+        default=False,
+        help=''
+    )
+
+    parser.add_argument(
+        '--no-simplify',
+        dest='simplify',
+        action='store_false',
+        default=True,
+        help=''
+    )
+
     parser.add_argument('category', help='category to run')
 
     return parser
@@ -356,7 +387,8 @@ def main(argv=None):
             return -1
         categories = [args.category]
 
-    analyser, jobs = WASP(), int(args.jobs)
+    analyser = WASP(smt_assume=args.smt_assume, simplify=args.simplify)
+    jobs = int(args.jobs)
     if not args.test_list:
         run(analyser, jobs , t_wasp   , prop, categories, 'WASP')
         run(analyser, 1    , t_testcov, prop, categories, None)
@@ -364,6 +396,6 @@ def main(argv=None):
         if not os.path.exists(args.test_list):
             warn(f'File \'{args.test_list}\' not found!')
             return 1
-        run_list(analyser, jobs, t_wasp_simpl, args.test_list)
+        run_list(analyser, jobs, t_wasp_simpl, args.test_list, args.output)
 
     return 0
