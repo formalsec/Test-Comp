@@ -2,6 +2,7 @@ import os
 import sys
 import glob
 import json
+import shutil
 import argparse
 import subprocess
 
@@ -107,6 +108,7 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
 
         solver_time = 0.0
         n_paths = 0
+        n_solver = 0
         instructions = 0
         answer, complete = None, False
         output_dir = os.path.join('output', os.path.basename(test))
@@ -121,6 +123,7 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
                     answer = str(report['specification'])
                     solver_time = float(report['solver_time'])
                     n_paths = report['paths_explored']
+                    n_solver = report['solver_counter']
                     instructions = report['instruction_counter']
                     complete = not report['incomplete']
             except (json.decoder.JSONDecodeError, FileNotFoundError):
@@ -134,6 +137,7 @@ def t_wasp_simpl(analyser, csv_writer, lock, size, test_list):
             complete,
             runtime,
             solver_time,
+            n_solver,
             n_paths,
             instructions
         ])
@@ -174,7 +178,9 @@ def t_wasp(analyser, csv_writer, lock, size):
             continue
 
         answer, complete = None, False
-        output_dir = os.path.join('output', os.path.basename(test))
+        output_dir = os.path.join('output', 
+                                  os.path.basename(os.path.dirname(test)),
+                                  os.path.basename(test))
         result = analyser.run(test, output_dir, prop)
         if result.timeout:
             answer = 'Timeout'
@@ -275,7 +281,7 @@ def run_list(analyser, n_jobs, task, test_list, output):
 
     csv_writer = CSVTableGenerator(
         file=output,
-        header=['test', 'answer', 'is_complete', 't_wasp', 't_solver', 'n_paths', 'instructions'],
+        header=['test', 'answer', 'is_complete', 't_wasp', 't_solver', 'n_solver', 'n_paths', 'instructions'],
         memory=False
     )
 
