@@ -311,14 +311,14 @@ class MyVisitor(c_ast.NodeVisitor):
 
     def visit_Typename(self, node):
         return node
-    
+
     def visit_UnaryOp(self, node):
         return c_ast.UnaryOp(
             node.op,
             self._safe_visit(node.expr),
             node.coord
         )
-        
+
     def visit_Union(self, node):
         return node
 
@@ -370,7 +370,7 @@ def main(argc, argv):
         except:
             print("[ERROR] parse error!!!")
             continue
-        
+
         n_ast = my_vis.visit(ast)
         n_ast_s = c_gen.visit(n_ast)
 

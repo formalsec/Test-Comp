@@ -113,29 +113,33 @@ class RowLengthDiffersException(Exception):
         return self.message
 
 class CSVTableGenerator:
-    def __init__(self, header):
+    def __init__(self, file='result.csv', header=[], memory=False):
+        self.file = file
         self.header = header
-        self.rowLength = len(header)
-        self.table = list()
-    
-    def getHeader(self):
-        return self.header
+        self.memory = memory
+        self.rsize = len(header)
+        self.table = []
 
-    def getRowLength(self):
-        return self.rowLength
+        with open(self.file, 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(self.header)
 
-    def getTable(self):
-        return self.table
+    def clear_table(self):
+        if self.memory:
+            self.table.clear()
 
-    def clearTable(self):
-        self.table.clear()
+    def add_row(self, row):
+        if len(row) != self.rsize:
+            raise RowLengthDiffersException(self.rsize, len(row))
+        if self.memory:
+            self.table.append(row) 
+        else:
+            with open(self.file, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
 
-    def addRow(self, row):
-        if len(row) != self.getRowLength():
-            raise RowLengthDiffersException(self.getRowLength(), len(row))
-        self.table.append(row) 
-
-    def write(self, file):
-        with open(file, 'w', newline='') as tbl:
-            writer = csv.writer(tbl)
-            writer.writerows([self.getHeader()] + self.getTable())
+    def commit(self):
+        if self.memory:
+            with open(self.file, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerows(self.table)

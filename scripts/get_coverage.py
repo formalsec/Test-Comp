@@ -153,8 +153,11 @@ def getLoopTime(test):
             return 0.0
 
 
-def main(argv):
+def main(argv=None):
     global cnt
+
+    if argv is None:
+        argv = sys.argv[1:]
 
     if argv == [] or len(argv) != 2:
         print('ERR: Invalid number of arguments.')
@@ -165,14 +168,13 @@ def main(argv):
         print('ERR: argument is not a directory.')
         return 1
 
-    prop = ''
     if argv[1] == 'branches':
         PROP = 'coverage-branches'
     elif argv[1] == 'error':
         PROP = 'coverage-error-call'
     else:
         print('ERR: invalid property')
-        return 1
+        return -1
 
     print('Category,WASP,Time')
     for cat, dirPropPair in test_dict.items():
@@ -195,4 +197,4 @@ def main(argv):
     return 0
 
 if __name__ == '__main__':
-    main(sys.argv[1:])
+    sys.exit(main())
