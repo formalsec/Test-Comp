@@ -19,7 +19,87 @@ class MethodNotImplemented(Exception):
         self.message = f'visit_{name}: method not implemented'
         super().__init__(self.message)
 
-class MyVisitor(c_ast.NodeVisitor):
+class LineCounter(c_ast.NodeVisitor):
+
+    def __init__(self, init):
+        self.count = init 
+
+    def _visit(self, node):
+        return self.visit(node) if node else node
+
+    def inc_count(self):
+        self.count += 1
+
+    def add_count(self, count):
+        self.count += count
+
+    def set_count(self, count):
+        self.count = count
+
+    def get_count(self):
+        return self.count
+
+    def visit_Case(self, node):
+        # inc with count of stmts
+        for stmt in node:
+            self._visit(stmt)
+        return node
+
+    def visit_Compound(self, node):
+        n_stmts = []
+        for stmt in node:
+            n_stmt = self._visit(stmt)
+            if type(n_stmt) is c_ast.Compound:
+                n_stmts += n_stmt.block_items
+            else:
+                n_stmts.append(n_stmt)
+        return c_ast.Compound(n_stmts, node.coord)
+
+    def visit_DoWhile(self, node):
+        # inc with count of stmts
+        self._visit(node.stmt)
+        return node
+
+    def visit_FileAST(self, node):
+        # inc with count of stmts
+        self._visit(node.ext)
+        return node
+
+    def visit_For(self, node):
+        # inc with count of stmts
+        self._visit(node.stmt)
+        return node
+
+    def visit_FuncDef(self, node):
+        # inc with count of stmts
+        self._visit(node.body)
+        return node
+
+    def visit_Label(self, node):
+        self._visit(node.stmt)
+        return node
+
+    def visit_If(self, node):
+        self._visit(node.iftrue)
+        self._visit(node.iffalse)
+        return node
+
+    def visit_Switch(self, node):
+        self._visit(node.stmt)
+        return node
+
+    def visit_While(self, node):
+        self._visit(node.stmt)
+        return node
+
+    def generic_visit(self, node):
+        self.inc_count()
+        return node
+
+class Instrumentor(c_ast.NodeVisitor):
+
+    def __init__(self):
+        self.if_ctx = []
 
     def _safe_visit(self, node):
         return self.visit(node) if node is not None else node
@@ -37,7 +117,7 @@ class MyVisitor(c_ast.NodeVisitor):
 
     def visit_ArrayDecl(self, node):
         return node
-    
+
     def visit_ArrayRef(self, node):
         return node
 
@@ -136,7 +216,7 @@ class MyVisitor(c_ast.NodeVisitor):
 
     def visit_EllipsisParam(self, node):
         return node
-       
+
     def visit_EmptyStatement(self, node):
         return node
 
@@ -172,14 +252,35 @@ class MyVisitor(c_ast.NodeVisitor):
             ]),
             node.coord
         )
-        return c_ast.For(
+        self.if_ctx.append(cnt)
+        stmt = self._safe_visit(node.stmt)
+        if_id = self.if_ctx.pop()
+        counter = LineCounter(0)
+        counter.visit(node)
+        set_ctx = c_ast.FuncCall(
+            c_ast.ID('set_priority'),
+            c_ast.ExprList([
+                c_ast.Constant('int', str(if_id)),
+                c_ast.Constant('int', str(counter.get_count())),
+                c_ast.Constant('int', str(sys.maxsize))
+            ])
+        )
+        pop_ctx = c_ast.FuncCall(
+            c_ast.ID('pop_priority'),
+            c_ast.ExprList([
+                c_ast.Constant('int', str(if_id))
+            ])
+        )
+        n_for = c_ast.For(
             self._safe_visit(node.init),
             #n_cond,
             self._safe_visit(node.cond),
             self._safe_visit(node.next),
-            self._safe_visit(node.stmt),
+            stmt,
             node.coord
         )
+        return c_ast.Compound([set_ctx, n_for, pop_ctx],
+                              node.coord)
 
     def visit_FuncCall(self, node):
         return c_ast.FuncCall(
@@ -207,25 +308,100 @@ class MyVisitor(c_ast.NodeVisitor):
 
     def visit_IdentifierType(self, node):
         return node
-    
+
+    def append_or_block(self, node, stmt):
+        if type(node) is c_ast.Compound:
+            node.block_items.append(stmt)
+            return node
+        return c_ast.Compound([node, stmt], node.coord)
+
+
     def visit_If(self, node):
         global cnt
         cnt = cnt + 1
-        n_cond = c_ast.FuncCall(
-            c_ast.ID('IFG'),
+        self.if_ctx.append(cnt)
+        iftrue = self._safe_visit(node.iftrue)
+        iffalse = self._safe_visit(node.iffalse)
+        if_id = self.if_ctx.pop()
+        counter = LineCounter(0)
+        counter.visit(node.iftrue)
+        true_cnt = counter.get_count()
+        counter.set_count(0)
+        counter.visit(node.iffalse)
+        false_cnt = counter.get_count()
+        set_ctx = c_ast.FuncCall(
+            c_ast.ID('set_priority'),
             c_ast.ExprList([
-                self._safe_visit(node.cond), 
-                c_ast.Constant('int', str(cnt))
-            ]),
-            node.coord
+                c_ast.Constant('int', str(if_id)),
+                c_ast.Constant('int', str(true_cnt)),
+                c_ast.Constant('int', str(false_cnt))
+            ])
         )
-        return c_ast.If(
+        pop_ctx = c_ast.FuncCall(
+            c_ast.ID('pop_priority'),
+            c_ast.ExprList([
+                c_ast.Constant('int', str(if_id))
+            ])
+        )
+#        counter.set_count(0)
+#        counter.visit(node.iftrue)
+#        iftrue = self.append_or_block(
+#            iftrue,
+#            c_ast.FuncCall(
+#                c_ast.ID('update_cov_branch'),
+#                c_ast.ExprList([
+#                    c_ast.Constant('int', str(if_id)),
+#                    c_ast.Constant('int', str(1)),
+#                    c_ast.Constant('int', str(counter.get_count()))
+#                ])
+#            )
+#        )
+#        for i in self.if_ctx[::-1]:
+#            iftrue = self.append_or_block(
+#                iftrue,
+#                c_ast.FuncCall(
+#                    c_ast.ID('update_cov_branch'),
+#                    c_ast.ExprList([
+#                        c_ast.Constant('int', str(i)),
+#                        c_ast.Constant('int', str(1)),
+#                        c_ast.Constant('int', str(counter.get_count()))
+#                    ])
+#                )
+#            )
+#        if iffalse:
+#            counter.set_count(0)
+#            counter.visit(node.iffalse)
+#            iffalse = self.append_or_block(
+#                iffalse,
+#                c_ast.FuncCall(
+#                    c_ast.ID('update_cov_branch'),
+#                    c_ast.ExprList([
+#                        c_ast.Constant('int', str(if_id)),
+#                        c_ast.Constant('int', str(0)),
+#                        c_ast.Constant('int', str(counter.get_count()))
+#                    ])
+#                )
+#            )
+#            for i in self.if_ctx[::-1]:
+#                iffalse = self.append_or_block(
+#                    iffalse,
+#                    c_ast.FuncCall(
+#                        c_ast.ID('update_cov_branch'),
+#                        c_ast.ExprList([
+#                            c_ast.Constant('int', str(i)),
+#                            c_ast.Constant('int', str(0)),
+#                            c_ast.Constant('int', str(counter.get_count()))
+#                        ])
+#                    )
+#                )
+        n_if = c_ast.If(
             #n_cond,
             self._safe_visit(node.cond),
-            self._safe_visit(node.iftrue),
-            self._safe_visit(node.iffalse),
+            iftrue,
+            iffalse,
             node.coord
         )
+        return c_ast.Compound([set_ctx, n_if, pop_ctx], node.coord)
 
     def visit_InitList(self, node):
         return c_ast.InitList(
@@ -257,10 +433,20 @@ class MyVisitor(c_ast.NodeVisitor):
         return node
 
     def visit_Return(self, node):
-        return c_ast.Return(
-            self._safe_visit(node.expr),
-            node.coord
-        )
+        to_add = []
+        for i in self.if_ctx:
+            to_add.append(
+                c_ast.FuncCall(
+                    c_ast.ID('pop_priority'),
+                    c_ast.ExprList([
+                        c_ast.Constant('int', str(i))
+                    ])
+                )
+            )
+        n_node = c_ast.Return(self._safe_visit(node.expr), node.coord)
+        if to_add:
+            return c_ast.Compound(to_add + [n_node], node.coord)
+        return n_node
 
     def visit_Struct(self, node):
         return node
@@ -347,16 +533,19 @@ class MyVisitor(c_ast.NodeVisitor):
         #raise MethodNotImplemented(node.__class__.__name__)
         return node
 
-def main(argc, argv):
+def main(argv):
     global cnt
-    if argc != 2:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    if len(argv) != 1:
+        print('Usage: ./patch_boolops.py <directory>')
         return
 
-    dir = sys.argv[1]
+    dir = argv[0]
     fls = glob.glob(f'{dir}/*.c')
 
     c_gen = c_generator.CGenerator()
-    my_vis = MyVisitor()
     for t in fls:
         cnt = 0
         print(f'Transforming {t}...')
@@ -368,14 +557,17 @@ def main(argc, argv):
                 cpp_args=['-E', r'-Ilib']
             )
         except:
-            print("[ERROR] parse error!!!")
+            print(
+                f"main: failed to parse \'{t}\'!",
+                file=sys.stderr
+            )
             continue
 
-        n_ast = my_vis.visit(ast)
+        n_ast = Instrumentor().visit(ast)
         n_ast_s = c_gen.visit(n_ast)
 
         with open(t, 'w') as f:
             f.write(n_ast_s)
 
 if __name__ == '__main__':
-    main(len(sys.argv), sys.argv)
+    sys.exit(main(sys.argv[1:]))
