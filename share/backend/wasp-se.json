@@ -1,0 +1,6 @@
+{ 
+  "tool": "wasp-se",
+  "tool_args" : ["-u", "--policy", "breadth", "--encoding", "incremental"],
+  "workspace" : "wasp-out",
+  "time_limit" : 60
+}

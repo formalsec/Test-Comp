@@ -1,0 +1,6 @@
+{ 
+  "tool": "wasp-ce",
+  "tool_args" : ["-u", "--policy", "breadth"],
+  "workspace" : "wasp-out",
+  "time_limit" : 60
+}
