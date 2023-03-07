@@ -138,7 +138,7 @@ def parse_report(f):
     try:
         with open(f, "r") as fd:
             return json.load(fd)
-    except json.decoder.JSONDecodeError:
+    except:
         return { "specification" : "Unknown", "solver_time" : 0.0,
                 "paths_explored" : 0 }
 
