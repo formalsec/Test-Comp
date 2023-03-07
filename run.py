@@ -183,20 +183,15 @@ def execute(benchmark, output_dir, backend, prop):
     }
     start = time.time()
     try:
-        subprocess.run(
-            [
+        cmd = [
                 "wasp-c", benchmark,
                 "--output", output_dir,
                 "--backend", backend,
-                "--testcomp",
+                "--test-comp",
                 "--property", prop,
                 "--arch", "32"
-            ],
-            timeout=900,
-            preexec_fn=(lambda: limit_ram(15*1024*1024)),
-            capture_output=True,
-            check=True
-        )
+            ]
+        subprocess.run(cmd, timeout=905, capture_output=True, check=True)
         report = parse_report(os.path.join(output_dir, "report.json"))
         result["answer"] = str(report["specification"])
         result["solver_time"] = float(report["solver_time"])
@@ -241,7 +236,7 @@ def run_benchmarks(lock, conf):
 
         benchmark_file = os.path.join(os.path.dirname(benchmark),
                                       benchmark_conf["input_files"])
-        output_dir = os.path.join(output,
+        output_dir = os.path.join("output",
             os.path.basename(os.path.dirname(benchmark_file)),
             os.path.basename(benchmark_file))
         result = execute(benchmark_file, output_dir, backend, prop)
@@ -264,7 +259,7 @@ def run(tasks, args):
     info("Starting Test-Comp Benchmarks...")
     info(f"property={args.property}, jobs={args.jobs}")
 
-    results = "results"
+    results = args.output
     if not os.path.exists(results):
         os.makedirs(results)
 
