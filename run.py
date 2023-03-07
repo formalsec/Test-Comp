@@ -119,10 +119,10 @@ def get_parser():
 
     parser.add_argument("-j", "--jobs", dest="jobs", action="store", type=int,
                         default=1, help="number of jobs to run in parallel")
-    parser.add_argument("-o", "--output", dest="output", action="store",
-                        default="results")
     parser.add_argument("-c", "--conf", dest="conf", action="store",
                         default="share/wasp-c.xml")
+    parser.add_argument("--results", dest="results", action="store",
+                        default="results")
     parser.add_argument("--backend", dest="backend", action="store",
                         default="share/backend/wasp-ce.json")
     parser.add_argument("--property", dest="property", action="store",
@@ -139,34 +139,47 @@ def parse_report(f):
         with open(f, "r") as fd:
             return json.load(fd)
     except:
-        return { "specification" : "Unknown", "solver_time" : 0.0,
+        return { "specification" : "Timeout", "solver_time" : 0.0,
                 "paths_explored" : 0 }
 
 def parse_yaml(f):
     with open(f, "r") as fd:
         return yaml.load(fd, Loader=yaml.SafeLoader)
 
+def parse_list(f):
+    with open(f, "r") as fd:
+        data = fd.readlines()
+    return list(map(lambda l: l.strip(),
+                    filter(lambda l: not l.startswith("#"), data)))
+
 
 def parse_tasks(conf):
     tasks = {}
     root = ET.parse(conf).getroot()
     for task in root.findall("tasks"):
+        name = task.attrib["name"]
+        tasks[name] = set()
         for i in task.findall("includesfile"):
-            task_name = task.attrib["name"]
-            tasks[task_name] = []
-            tasks_conf: str = i.text
-            with open(tasks_conf, "r") as fd:
-                tasks_set = fd.readlines()
-            tasks_set = list(
-                filter(lambda l: not l.startswith("#"), tasks_set))
-            for tasks_file in tasks_set:
-                tasks_file = tasks_file.strip()
-                if not tasks_file:
+            tasks_sets = parse_list(i.text)
+            for tasks_set_file in tasks_sets:
+                if not tasks_set_file:
                     continue
-                benchmarks = glob.glob(
-                    os.path.join(os.path.dirname(tasks_conf), tasks_file)
+                tasks_set = glob.glob(
+                    os.path.join(os.path.dirname(i.text), tasks_set_file)
                 )
-                tasks[task_name] += list(benchmarks)
+                tasks[name] = tasks[name].union(set(tasks_set))
+        for i in task.findall("excludesfile"):
+            tasks_sets = parse_list(i.text)
+            for tasks_set_file in tasks_sets:
+                if not tasks_set_file:
+                    continue
+                if tasks_set_file.startswith("sv-benchmarks"):
+                    tasks_set = glob.glob(tasks_set_file)
+                else:
+                    tasks_set = glob.glob(
+                        os.path.join(os.path.dirname(i.text), tasks_set_file)
+                    )
+                tasks[name] = tasks[name].difference(set(tasks_set))
     return tasks
 
 def limit_ram(limit):
@@ -177,7 +190,7 @@ def execute(benchmark, output_dir, backend, prop):
         "timeout" : False,
         "crashed" : False,
         "runtime" : 0.0,
-        "answer" : "Unknown",
+        "answer" : "Timeout",
         "solver_time" : 0.0,
         "paths_explored" : 0
     }
@@ -209,7 +222,6 @@ def run_benchmarks(lock, conf):
 
     size = conf["size"]
     prop = conf["prop"]
-    output = conf["output"]
     backend = conf["backend"]
     table = conf["table"]
     while True:
@@ -218,7 +230,7 @@ def run_benchmarks(lock, conf):
             benchmark = benchmarks.pop()
             prev = progress(f"Running {benchmark}", size - len(benchmarks), size,
                             prev = prev)
-        except IndexError:
+        except KeyError:
             break
         finally:
             lock.release()
@@ -236,7 +248,7 @@ def run_benchmarks(lock, conf):
 
         benchmark_file = os.path.join(os.path.dirname(benchmark),
                                       benchmark_conf["input_files"])
-        output_dir = os.path.join("output",
+        output_dir = os.path.join("wasp-out",
             os.path.basename(os.path.dirname(benchmark_file)),
             os.path.basename(benchmark_file))
         result = execute(benchmark_file, output_dir, backend, prop)
@@ -259,16 +271,14 @@ def run(tasks, args):
     info("Starting Test-Comp Benchmarks...")
     info(f"property={args.property}, jobs={args.jobs}")
 
-    results = args.output
-    if not os.path.exists(results):
-        os.makedirs(results)
+    if not os.path.exists(args.results):
+        os.makedirs(args.results)
 
     lock = Lock()
     for cat, benchmarks in tasks.items():
         info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
         table = CSVTableGenerator(
-            file = os.path.join(results,
-                                f"{os.path.basename(args.backend)}_{cat}.csv"),
+            file = os.path.join(args.results, f"{cat}.csv"),
             header=["test", "answer", "t_backend", "t_solver", "paths"],
             memory=False
         )
@@ -276,7 +286,6 @@ def run(tasks, args):
         for _ in range(args.jobs):
             conf = {
                 "prop" : args.property,
-                "output" : args.output,
                 "size" : size,
                 "backend" : args.backend,
                 "table" : table
@@ -298,6 +307,7 @@ def main(argv=None):
         argv = sys.argv[1:]
     args = parse(argv)
     tasks = parse_tasks(args.conf)
+    print(tasks)
     return run(tasks, args)
 
 
