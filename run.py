@@ -1,25 +1,34 @@
 #!/usr/bin/env python3
 import os
 import sys
+import csv
 import glob
+import yaml
+import json
+import time
+import resource
 import argparse
+import subprocess
 
 import xml.etree.ElementTree as ET
 
+from threading import Thread, Lock
+
 MAPPING = {
-    "black" : 90,
-    "red" : 91,
-    "green" : 92,
-    "yellow" : 93,
-    "blue" : 94,
-    "purple" : 95,
-    "cyan" : 96,
+    "black": 90,
+    "red": 91,
+    "green": 92,
+    "yellow": 93,
+    "blue": 94,
+    "purple": 95,
+    "cyan": 96,
     "white": 97
 }
 
 BOLD = "\033[1m"
 PREFIX = "\033["
 SUFFIX = "\033[0m"
+
 
 def progress(msg, curr, total, prev=0):
     status = round((curr / total) * 100)
@@ -32,6 +41,7 @@ def progress(msg, curr, total, prev=0):
     sys.stdout.flush()
     return len(msg) + 7
 
+
 def warn(msg, prefix=None):
     if prefix:
         sys.stdout.write(prefix)
@@ -39,6 +49,7 @@ def warn(msg, prefix=None):
     warn_str = f"{BOLD}{PREFIX}{color}mWARN{SUFFIX}"
     sys.stdout.write(f"[{warn_str}] {msg}\n")
     sys.stdout.flush()
+
 
 def info(msg, prefix=None):
     if prefix:
@@ -48,6 +59,7 @@ def info(msg, prefix=None):
     sys.stdout.write(f"[{warn_str}] {msg}\n")
     sys.stdout.flush()
 
+
 def indent(msg, prefix=None):
     if prefix:
         sys.stdout.write(prefix)
@@ -56,26 +68,84 @@ def indent(msg, prefix=None):
     sys.stdout.write(f"[{ident_str}] {msg}\n")
     sys.stdout.flush()
 
+class RowLengthDiffersException(Exception):
+    def __init__(self, len1, len2):
+        self.len1 = len1
+        self.len2 = len2
+        self.message = f'Expected row length of \'{len1}\' but got \'{len2}\''
+        super().__init__(self.message)
+
+    def __str__(self):
+        return self.message
+
+class CSVTableGenerator:
+    def __init__(self, file='result.csv', header=[], memory=False):
+        self.file = file
+        self.header = header
+        self.memory = memory
+        self.rsize = len(header)
+        self.table = []
+
+        with open(self.file, 'w') as f:
+            writer = csv.writer(f)
+            writer.writerow(self.header)
+
+    def clear_table(self):
+        if self.memory:
+            self.table.clear()
+
+    def add_row(self, row):
+        if len(row) != self.rsize:
+            raise RowLengthDiffersException(self.rsize, len(row))
+        if self.memory:
+            self.table.append(row) 
+        else:
+            with open(self.file, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerow(row)
+
+    def commit(self):
+        if self.memory:
+            with open(self.file, 'a') as f:
+                writer = csv.writer(f)
+                writer.writerows(self.table)
+
+
 def get_parser():
     parser = argparse.ArgumentParser(
         prog="run.py",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument("-j", "--jobs", dest="jobs", action="store",
+    parser.add_argument("-j", "--jobs", dest="jobs", action="store", type=int,
                         default=1, help="number of jobs to run in parallel")
     parser.add_argument("-o", "--output", dest="output", action="store",
                         default="results")
     parser.add_argument("-c", "--conf", dest="conf", action="store",
-                        default="configs/wasp-c.xml")
+                        default="share/wasp-c.xml")
     parser.add_argument("--backend", dest="backend", action="store",
-                        default="configs/backend/wasp-ce.json")
+                        default="share/backend/wasp-ce.json")
     parser.add_argument("--property", dest="property", action="store",
-                        default="coverage-error-call")
+        default="sv-benchmarks/c/properties/coverage-error-call.prp")
     return parser
+
 
 def parse(argv):
     return get_parser().parse_args(argv)
+
+
+def parse_report(f):
+    try:
+        with open(f, "r") as fd:
+            return json.load(fd)
+    except json.decoder.JSONDecodeError:
+        return { "specification" : "Unknown", "solver_time" : 0.0,
+                "paths_explored" : 0 }
+
+def parse_yaml(f):
+    with open(f, "r") as fd:
+        return yaml.load(fd, Loader=yaml.SafeLoader)
+
 
 def parse_tasks(conf):
     tasks = {}
@@ -84,10 +154,11 @@ def parse_tasks(conf):
         for i in task.findall("includesfile"):
             task_name = task.attrib["name"]
             tasks[task_name] = []
-            tasks_conf : str = i.text
+            tasks_conf: str = i.text
             with open(tasks_conf, "r") as fd:
                 tasks_set = fd.readlines()
-            tasks_set = list(filter(lambda l: not l.startswith("#"), tasks_set))
+            tasks_set = list(
+                filter(lambda l: not l.startswith("#"), tasks_set))
             for tasks_file in tasks_set:
                 tasks_file = tasks_file.strip()
                 if not tasks_file:
@@ -98,17 +169,142 @@ def parse_tasks(conf):
                 tasks[task_name] += list(benchmarks)
     return tasks
 
-def run(tasks, prop, jobs):
-    info("Starting Test-Comp Benchmarks...")
-    info(f"property={prop}, jobs={jobs}")
+def limit_ram(limit):
+    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
+def execute(benchmark, output_dir, backend, prop):
+    result = {
+        "timeout" : False,
+        "crashed" : False,
+        "runtime" : 0.0,
+        "answer" : "Unknown",
+        "solver_time" : 0.0,
+        "paths_explored" : 0
+    }
+    start = time.time()
+    try:
+        subprocess.run(
+            [
+                "wasp-c", benchmark,
+                "--output", output_dir,
+                "--backend", backend,
+                "--testcomp",
+                "--property", prop,
+                "--arch", "32"
+            ],
+            timeout=900,
+            preexec_fn=(lambda: limit_ram(15*1024*1024)),
+            capture_output=True,
+            check=True
+        )
+        report = parse_report(os.path.join(output_dir, "report.json"))
+        result["answer"] = str(report["specification"])
+        result["solver_time"] = float(report["solver_time"])
+        result["paths_explored"] = int(report["paths_explored"])
+    except subprocess.TimeoutExpired:
+        result["timeout"], result["answer"] = True, "Timeout"
+    except subprocess.CalledProcessError:
+        result["crashed"], result["answer"] = True, "Crash"
+    result["runtime"] = time.time() - start
+    return result
+
+def run_benchmarks(lock, conf):
+    global prev
+    global benchmarks
+
+    size = conf["size"]
+    prop = conf["prop"]
+    output = conf["output"]
+    backend = conf["backend"]
+    table = conf["table"]
+    while True:
+        try:
+            lock.acquire()
+            benchmark = benchmarks.pop()
+            prev = progress(f"Running {benchmark}", size - len(benchmarks), size,
+                            prev = prev)
+        except IndexError:
+            break
+        finally:
+            lock.release()
+
+        benchmark_conf = parse_yaml(benchmark)
+        skip = True
+        for prp in benchmark_conf["properties"]:
+            prop_name = os.path.basename(prop)
+            prp_name = os.path.basename(prp["property_file"])
+            if prop_name == prp_name:
+                skip = False
+                break
+        if skip:
+            continue
+
+        benchmark_file = os.path.join(os.path.dirname(benchmark),
+                                      benchmark_conf["input_files"])
+        output_dir = os.path.join(output,
+            os.path.basename(os.path.dirname(benchmark_file)),
+            os.path.basename(benchmark_file))
+        result = execute(benchmark_file, output_dir, backend, prop)
+
+        lock.acquire()
+        table.add_row([
+            benchmark_file,
+            result["answer"],
+            result["runtime"],
+            result["solver_time"],
+            result["paths_explored"]
+        ])
+        lock.release()
     return 0
+
+
+def run(tasks, args):
+    global prev
+    global benchmarks
+    info("Starting Test-Comp Benchmarks...")
+    info(f"property={args.property}, jobs={args.jobs}")
+
+    results = "results"
+    if not os.path.exists(results):
+        os.makedirs(results)
+
+    lock = Lock()
+    for cat, benchmarks in tasks.items():
+        info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
+        table = CSVTableGenerator(
+            file = os.path.join(results,
+                                f"{os.path.basename(args.backend)}_{cat}.csv"),
+            header=["test", "answer", "t_backend", "t_solver", "paths"],
+            memory=False
+        )
+        threads, size, prev = [], len(benchmarks), 0
+        for _ in range(args.jobs):
+            conf = {
+                "prop" : args.property,
+                "output" : args.output,
+                "size" : size,
+                "backend" : args.backend,
+                "table" : table
+            }
+            t = Thread(target=run_benchmarks, args=(lock, conf,))
+            threads.append(t)
+            t.start()
+
+        for t in threads:
+            t.join()
+
+        table.commit()
+
+    return 0
+
 
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
     args = parse(argv)
     tasks = parse_tasks(args.conf)
-    return run(tasks, args.property, args.jobs)
+    return run(tasks, args)
+
 
 if __name__ == "__main__":
     sys.exit(main())
