@@ -307,7 +307,6 @@ def main(argv=None):
         argv = sys.argv[1:]
     args = parse(argv)
     tasks = parse_tasks(args.conf)
-    print(tasks)
     return run(tasks, args)
 
 
