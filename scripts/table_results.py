@@ -33,6 +33,15 @@ def gen_table(results):
         table["Solver"].append(
             str(round(sum(map(lambda r: float(r["t_solver"]), rows)), 3)))
         table["Paths"].append(str(sum(map(lambda r: int(r["paths"]), rows))))
+    # Total
+    table["Category"].append("Total")
+    table["Falses"].append(str(sum(map(int, table["Falses"]))))
+    table["Trues"].append(str(sum(map(int, table["Trues"]))))
+    table["Timeouts"].append(str(sum(map(int, table["Timeouts"]))))
+    table["Crashes"].append(str(sum(map(int, table["Crashes"]))))
+    table["Time"].append(str(round(sum(map(float, table["Time"])), 3)))
+    table["Solver"].append(str(round(sum(map(float, table["Solver"])), 3)))
+    table["Paths"].append(str(sum(map(int, table["Paths"]))))
     return table
 
 def main(argv=None):
