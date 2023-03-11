@@ -57,9 +57,11 @@
   <tasks name="ReachSafety-Combinations">
     <includesfile>sv-benchmarks/c/ReachSafety-Combinations.set</includesfile>
   </tasks>
+  <!--
   <tasks name="ReachSafety-Hardware">
     <includesfile>sv-benchmarks/c/ReachSafety-Hardware.set</includesfile>
   </tasks>
+  -->
 
   <tasks name="SoftwareSystems-BusyBox-MemSafety">
     <includesfile>sv-benchmarks/c/SoftwareSystems-BusyBox-MemSafety.set</includesfile>

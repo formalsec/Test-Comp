@@ -187,8 +187,6 @@ def limit_ram(limit):
 
 def execute(benchmark, output_dir, backend, prop):
     result = {
-        "timeout" : False,
-        "crashed" : False,
         "runtime" : 0.0,
         "answer" : "Timeout",
         "solver_time" : 0.0,
@@ -202,17 +200,19 @@ def execute(benchmark, output_dir, backend, prop):
                 "--backend", backend,
                 "--test-comp",
                 "--property", prop,
-                "--arch", "32"
+                "--arch", "32",
+                "--timeout", "900",
+                "--rm-boolops"
             ]
-        subprocess.run(cmd, timeout=905, capture_output=True, check=True)
+        subprocess.run(cmd, capture_output=True, check=True)
         report = parse_report(os.path.join(output_dir, "report.json"))
         result["answer"] = str(report["specification"])
         result["solver_time"] = float(report["solver_time"])
         result["paths_explored"] = int(report["paths_explored"])
     except subprocess.TimeoutExpired:
-        result["timeout"], result["answer"] = True, "Timeout"
+        result["answer"] = "Timeout"
     except subprocess.CalledProcessError:
-        result["crashed"], result["answer"] = True, "Crash"
+        result["answer"] = "Crash"
     result["runtime"] = time.time() - start
     return result
 

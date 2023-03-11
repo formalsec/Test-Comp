@@ -1,6 +1,6 @@
 { 
   "tool" : "wasp-se",
-  "policy" : "breadth",
+  "policy" : "breadth-l",
   "type_checker" : false,
   "timeout" : 895,
   "debug" : false,
