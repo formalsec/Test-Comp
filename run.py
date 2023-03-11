@@ -201,8 +201,7 @@ def execute(benchmark, output_dir, backend, prop):
                 "--test-comp",
                 "--property", prop,
                 "--arch", "32",
-                "--timeout", "900",
-                "--rm-boolops"
+                "--timeout", "900"
             ]
         subprocess.run(cmd, capture_output=True, check=True)
         report = parse_report(os.path.join(output_dir, "report.json"))
