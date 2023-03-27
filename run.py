@@ -9,10 +9,11 @@ import time
 import resource
 import argparse
 import subprocess
-
 import xml.etree.ElementTree as ET
 
-from threading import Thread, Lock
+from zipfile import ZipFile
+
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor
 
 MAPPING = {
@@ -239,14 +240,15 @@ def run_benchmark(lock, conf, benchmark):
             skip = False
             break
     if skip:
-        return
+        return None
 
     benchmark_file = os.path.join(os.path.dirname(benchmark),
                                   benchmark_conf["input_files"])
     output_dir = os.path.join(
         "wasp-out",
         os.path.basename(os.path.dirname(benchmark_file)),
-        os.path.basename(benchmark_file))
+        os.path.basename(benchmark_file)
+    )
     result = execute(benchmark_file, output_dir, backend, prop)
     lock.acquire()
     return [
@@ -284,13 +286,37 @@ def run_tasks(tasks, args):
                     "backend" : args.backend,
                 }
                 res = executor.submit(run_benchmark, lock, conf, benchmark)
-                table.add_row(res.result())
+                if not (res.result() is None):
+                    table.add_row(res.result())
             table.commit()
 
     return 0
 
 def validate(conf):
-    (task, prop) = conf
+    (bench, args) = conf
+    testsuite = os.path.join(args.validate, bench, "test-suite")
+    if not os.path.exists(testsuite):
+        return 1
+    # zip test-suite
+    testcases = glob.glob(os.path.join(testsuite, "*.xml"))
+    testsuite = os.path.join(testsuite, "test-suite.zip")
+    with ZipFile(testsuite, "w") as zip_file:
+        for testcase in testcases:
+            zip_file.write(testcase)
+    output_dir = os.path.join("val-out", bench)
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    subprocess.run(
+        [
+            "/home/fmarques/test-suite-validator/bin/testcov", bench,
+            "--no-plots",
+            "--no-isolation",
+            "--memlimit", "6GB",
+            "--timelimit-per-run", "50",
+            "--test-suite", testsuite
+        ],
+        check=True
+    )
     return 0
 
 def validate_tasks(tasks, args):
@@ -298,7 +324,7 @@ def validate_tasks(tasks, args):
     info(f"property={args.property}")
     for cat, benchmarks in tasks.items():
         info(f"Validating \"{cat}\"...", prefix="\n")
-        list(map(validate, [(t, args.property) for t in benchmarks]))
+        list(map(validate, [(bench, args) for bench in benchmarks]))
     return 0
 
 
