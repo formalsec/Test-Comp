@@ -324,7 +324,7 @@ def validate(conf):
         os.makedirs(output_dir)
     subprocess.run(
         [
-            "/home/fmarques/test-suite-validator/bin/testcov", bench,
+            "/home/fmarques/test-suite-validator/bin/testcov", benchmark_file,
             "--no-plots",
             "--no-isolation",
             "--memlimit", "6GB",
