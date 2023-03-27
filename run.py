@@ -294,7 +294,18 @@ def run_tasks(tasks, args):
 
 def validate(conf):
     (bench, args) = conf
+    bench_conf = parse_yaml(bench)
+    skip = True
+    for prp in bench_conf["properties"]:
+        prop_name = os.path.basename(args.property)
+        prp_name = os.path.basename(prp["property_file"])
+        if prop_name == prp_name:
+            skip = False
+            break
+    if skip:
+        return 1
     testsuite = os.path.join(args.validate, bench, "test-suite")
+    print(testsuite)
     if not os.path.exists(testsuite):
         return 1
     # zip test-suite
