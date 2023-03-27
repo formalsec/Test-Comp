@@ -304,8 +304,14 @@ def validate(conf):
             break
     if skip:
         return 1
-    testsuite = os.path.join(args.validate, bench, "test-suite")
-    print(testsuite)
+    benchmark_file = os.path.join(os.path.dirname(bench),
+                                  bench_conf["input_files"])
+    testsuite = os.path.join(
+        args.validate,
+        os.path.basename(os.path.dirname(benchmark_file)),
+        os.path.basename(benchmark_file),
+        "test-suite"
+    )
     if not os.path.exists(testsuite):
         return 1
     # zip test-suite
