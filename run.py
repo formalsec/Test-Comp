@@ -13,6 +13,7 @@ import subprocess
 import xml.etree.ElementTree as ET
 
 from threading import Thread, Lock
+from concurrent.futures import ThreadPoolExecutor
 
 MAPPING = {
     "black": 90,
@@ -127,6 +128,8 @@ def get_parser():
                         default="share/backend/wasp-ce.json")
     parser.add_argument("--property", dest="property", action="store",
         default="sv-benchmarks/c/properties/coverage-error-call.prp")
+    parser.add_argument("--validate", dest="validate", action="store",
+                        default=None)
     return parser
 
 
@@ -215,58 +218,49 @@ def execute(benchmark, output_dir, backend, prop):
     result["runtime"] = time.time() - start
     return result
 
-def run_benchmarks(lock, conf):
+def run_benchmark(lock, conf, benchmark):
     global prev
-    global benchmarks
+    global curr
 
     size = conf["size"]
     prop = conf["prop"]
     backend = conf["backend"]
-    table = conf["table"]
-    while True:
-        try:
-            lock.acquire()
-            benchmark = benchmarks.pop()
-            prev = progress(f"Running {benchmark}", size - len(benchmarks), size,
-                            prev = prev)
-        except KeyError:
+    lock.acquire()
+    curr += 1
+    prev = progress(f"Running {benchmark}", size - curr, size, prev = prev)
+    lock.release()
+
+    benchmark_conf = parse_yaml(benchmark)
+    skip = True
+    for prp in benchmark_conf["properties"]:
+        prop_name = os.path.basename(prop)
+        prp_name = os.path.basename(prp["property_file"])
+        if prop_name == prp_name:
+            skip = False
             break
-        finally:
-            lock.release()
+    if skip:
+        return
 
-        benchmark_conf = parse_yaml(benchmark)
-        skip = True
-        for prp in benchmark_conf["properties"]:
-            prop_name = os.path.basename(prop)
-            prp_name = os.path.basename(prp["property_file"])
-            if prop_name == prp_name:
-                skip = False
-                break
-        if skip:
-            continue
-
-        benchmark_file = os.path.join(os.path.dirname(benchmark),
-                                      benchmark_conf["input_files"])
-        output_dir = os.path.join("wasp-out",
-            os.path.basename(os.path.dirname(benchmark_file)),
-            os.path.basename(benchmark_file))
-        result = execute(benchmark_file, output_dir, backend, prop)
-
-        lock.acquire()
-        table.add_row([
-            benchmark_file,
-            result["answer"],
-            result["runtime"],
-            result["solver_time"],
-            result["paths_explored"]
-        ])
-        lock.release()
-    return 0
+    benchmark_file = os.path.join(os.path.dirname(benchmark),
+                                  benchmark_conf["input_files"])
+    output_dir = os.path.join(
+        "wasp-out",
+        os.path.basename(os.path.dirname(benchmark_file)),
+        os.path.basename(benchmark_file))
+    result = execute(benchmark_file, output_dir, backend, prop)
+    lock.acquire()
+    return [
+        benchmark_file,
+        result["answer"],
+        result["runtime"],
+        result["solver_time"],
+        result["paths_explored"]
+    ]
 
 
-def run(tasks, args):
+def run_tasks(tasks, args):
     global prev
-    global benchmarks
+    global curr
     info("Starting Test-Comp Benchmarks...")
     info(f"property={args.property}, jobs={args.jobs}")
 
@@ -274,30 +268,37 @@ def run(tasks, args):
         os.makedirs(args.results)
 
     lock = Lock()
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        for cat, benchmarks in tasks.items():
+            info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
+            table = CSVTableGenerator(
+                file = os.path.join(args.results, f"{cat}.csv"),
+                header=["test", "answer", "t_backend", "t_solver", "paths"],
+                memory=False
+            )
+            size, prev, curr = len(benchmarks), 0, 0
+            for benchmark in benchmarks:
+                conf = {
+                    "prop" : args.property,
+                    "size" : size,
+                    "backend" : args.backend,
+                }
+                res = executor.submit(run_benchmark, lock, conf, benchmark)
+                table.add_row(res.result())
+            table.commit()
+
+    return 0
+
+def validate(conf):
+    (task, prop) = conf
+    return 0
+
+def validate_tasks(tasks, args):
+    info("Starting Test-Comp validation...")
+    info(f"property={args.property}")
     for cat, benchmarks in tasks.items():
-        info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
-        table = CSVTableGenerator(
-            file = os.path.join(args.results, f"{cat}.csv"),
-            header=["test", "answer", "t_backend", "t_solver", "paths"],
-            memory=False
-        )
-        threads, size, prev = [], len(benchmarks), 0
-        for _ in range(args.jobs):
-            conf = {
-                "prop" : args.property,
-                "size" : size,
-                "backend" : args.backend,
-                "table" : table
-            }
-            t = Thread(target=run_benchmarks, args=(lock, conf,))
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
-
-        table.commit()
-
+        info(f"Validating \"{cat}\"...", prefix="\n")
+        list(map(validate, [(t, args.property) for t in benchmarks]))
     return 0
 
 
@@ -306,8 +307,9 @@ def main(argv=None):
         argv = sys.argv[1:]
     args = parse(argv)
     tasks = parse_tasks(args.conf)
-    return run(tasks, args)
-
+    if not args.validate:
+        return run_tasks(tasks, args)
+    return validate_tasks(tasks, args)
 
 if __name__ == "__main__":
     sys.exit(main())
