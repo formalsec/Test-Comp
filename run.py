@@ -329,10 +329,14 @@ def validate(conf):
             "--no-isolation",
             "--memlimit", "6GB",
             "--timelimit-per-run", "50",
-            "--test-suite", testsuite
+            "--test-suite", testsuite,
+            "--output", output_dir
         ],
         check=True
     )
+    aux_file = "instrumented_" + os.path.basename(benchmark_file) + ".gcov"
+    if os.path.exists(aux_file):
+        os.remove(aux_file)
     return 0
 
 def validate_tasks(tasks, args):
