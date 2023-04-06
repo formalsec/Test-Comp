@@ -51,7 +51,7 @@ def main(argv=None):
     results_dir = argv[0]
     results_csvs = glob.glob(os.path.join(results_dir, "*.csv"))
     table = gen_table(zip(results_csvs, list(map(read_csv, results_csvs))))
-    print(pandas.DataFrame(table).to_latex(index=False))
+    print(pandas.DataFrame(table).style.to_latex())
     return 0
 
 if __name__ == '__main__':

@@ -226,6 +226,7 @@ def run_benchmark(lock, conf, benchmark):
     size = conf["size"]
     prop = conf["prop"]
     backend = conf["backend"]
+    table = conf["table"]
     lock.acquire()
     curr += 1
     prev = progress(f"Running {benchmark}", curr, size, prev = prev)
@@ -250,13 +251,15 @@ def run_benchmark(lock, conf, benchmark):
         os.path.basename(benchmark_file)
     )
     result = execute(benchmark_file, output_dir, backend, prop)
-    return [
+    lock.acquire()
+    table.add_row([
         benchmark_file,
         result["answer"],
         result["runtime"],
         result["solver_time"],
         result["paths_explored"]
-    ]
+    ])
+    lock.release()
 
 
 def run_tasks(tasks, args):
@@ -268,26 +271,26 @@ def run_tasks(tasks, args):
     if not os.path.exists(args.results):
         os.makedirs(args.results)
 
-    for cat, benchmarks in tasks.items():
-        info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
-        table = CSVTableGenerator(
-            file = os.path.join(args.results, f"{cat}.csv"),
-            header=["test", "answer", "t_backend", "t_solver", "paths"],
-            memory=False
-        )
-        lock = Lock()
-        size, prev, curr = len(benchmarks), 0, 0
-        with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-            for benchmark in benchmarks:
-                conf = {
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        for cat, benchmarks in tasks.items():
+            info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
+            table = CSVTableGenerator(
+                file = os.path.join(args.results, f"{cat}.csv"),
+                header=["test", "answer", "t_backend", "t_solver", "paths"],
+                memory=False
+            )
+            lock = Lock()
+            size, prev, curr = len(benchmarks), 0, 0
+            conf = {
                     "prop" : args.property,
                     "size" : size,
                     "backend" : args.backend,
-                }
-                res = executor.submit(run_benchmark, lock, conf, benchmark)
-                if not (res.result() is None):
-                    table.add_row(res.result())
-        table.commit()
+                    "table" : table,
+            }
+            results = executor.map(lambda b : run_benchmark(lock, conf, b), benchmarks)
+            for res in results:
+                pass
+            table.commit()
 
     return 0
 

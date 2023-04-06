@@ -1,6 +1,6 @@
-{ 
+{
   "tool" : "/home/fmarques/work/wasp-joao/wasp/_build/install/default/bin/wasp-se",
-  "policy" : "breadth-l",
+  "policy" : "hybridp",
   "type_checker" : false,
   "timeout" : 895,
   "debug" : false,
