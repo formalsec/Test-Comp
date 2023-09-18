@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+from re import sub, subn
 import sys
 import csv
 import glob
@@ -31,6 +32,7 @@ BOLD = "\033[1m"
 PREFIX = "\033["
 SUFFIX = "\033[0m"
 
+VRAM_LIMIT = 15 * 1024 * 1024 * 1024
 
 def progress(msg, curr, total, prev=0):
     status = round((curr / total) * 100)
@@ -100,7 +102,7 @@ class CSVTableGenerator:
         if len(row) != self.rsize:
             raise RowLengthDiffersException(self.rsize, len(row))
         if self.memory:
-            self.table.append(row) 
+            self.table.append(row)
         else:
             with open(self.file, 'a') as f:
                 writer = csv.writer(f)
@@ -197,29 +199,31 @@ def execute(benchmark, output_dir, backend, prop):
         "paths_explored" : 0
     }
     start = time.time()
+    cmd = [
+        "wasp-c", benchmark,
+        "--output", output_dir,
+        "-I", "../wasp-private/share/libc"
+#       "--backend", backend,
+#       "--test-comp",
+#       "--property", prop,
+#       "--arch", "32",
+#       "--timeout", "900"
+    ]
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        preexec_fn=limit_ram(VRAM_LIMIT))
     try:
-        cmd = [
-                "wasp-c", benchmark,
-                "--output", output_dir,
-                "-I", "../wasp-private/share/libc"
-#                "--backend", backend,
-#                "--test-comp",
-#                "--property", prop,
-#                "--arch", "32",
-#                "--timeout", "900"
-            ]
-        subprocess.run(
-            cmd,
-            capture_output=True,
-            check=True,
-            timeout=900,
-            preexec_fn=limit_ram(15*1024*1024*1024))
+        _, _ = proc.communicate(timeout=900.0)
         report = parse_report(os.path.join(output_dir, "report.json"))
         result["answer"] = str(report["specification"])
         result["solver_time"] = float(report["solver_time"])
         result["paths_explored"] = int(report["paths_explored"])
     except subprocess.TimeoutExpired:
         result["answer"] = "Timeout"
+        proc.kill()
+        proc.communicate()
     except subprocess.CalledProcessError:
         result["answer"] = "Crash"
     result["runtime"] = time.time() - start
@@ -293,7 +297,7 @@ def run_tasks(tasks, args):
                     "table" : table,
             }
             results = executor.map(lambda b : run_benchmark(lock, conf, b), benchmarks)
-            for res in results:
+            for _ in results:
                 pass
 
     return 0
