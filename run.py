@@ -201,13 +201,19 @@ def execute(benchmark, output_dir, backend, prop):
         cmd = [
                 "wasp-c", benchmark,
                 "--output", output_dir,
-                "--backend", backend,
-                "--test-comp",
-                "--property", prop,
-                "--arch", "32",
-                "--timeout", "900"
+                "-I", "../wasp-private/share/libc"
+#                "--backend", backend,
+#                "--test-comp",
+#                "--property", prop,
+#                "--arch", "32",
+#                "--timeout", "900"
             ]
-        subprocess.run(cmd, capture_output=True, check=True)
+        subprocess.run(
+            cmd,
+            capture_output=True,
+            check=True,
+            timeout=900,
+            preexec_fn=limit_ram(15*1024*1024*1024))
         report = parse_report(os.path.join(output_dir, "report.json"))
         result["answer"] = str(report["specification"])
         result["solver_time"] = float(report["solver_time"])
@@ -276,8 +282,7 @@ def run_tasks(tasks, args):
             info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
             table = CSVTableGenerator(
                 file = os.path.join(args.results, f"{cat}.csv"),
-                header=["test", "answer", "t_backend", "t_solver", "paths"],
-                memory=False
+                header=["test", "answer", "t_backend", "t_solver", "paths"]
             )
             lock = Lock()
             size, prev, curr = len(benchmarks), 0, 0
@@ -290,7 +295,6 @@ def run_tasks(tasks, args):
             results = executor.map(lambda b : run_benchmark(lock, conf, b), benchmarks)
             for res in results:
                 pass
-            table.commit()
 
     return 0
 
