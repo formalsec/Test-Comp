@@ -281,7 +281,7 @@ def run_tasks(tasks, args):
     if not os.path.exists(args.results):
         os.makedirs(args.results)
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
         for cat, benchmarks in tasks.items():
             info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
             table = CSVTableGenerator(
