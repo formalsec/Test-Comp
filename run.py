@@ -187,7 +187,7 @@ def parse_tasks(conf):
     return tasks
 
 def limit_ram(limit):
-    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+    return lambda: resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
 
 def execute(benchmark, output_dir, backend, prop):
     result = {
