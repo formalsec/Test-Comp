@@ -224,8 +224,6 @@ def execute(benchmark, output_dir, backend, prop):
         result["answer"] = "Timeout"
         proc.kill()
         proc.communicate()
-    except subprocess.CalledProcessError:
-        result["answer"] = "Crash"
     result["runtime"] = time.time() - start
     return result
 
@@ -281,24 +279,26 @@ def run_tasks(tasks, args):
     if not os.path.exists(args.results):
         os.makedirs(args.results)
 
+    n_tasks = []
+    for _, benchmarks in tasks.items():
+        n_tasks += benchmarks
     with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-        for cat, benchmarks in tasks.items():
-            info(f"Analysing \"{cat}\" benchmarks.", prefix="\n")
-            table = CSVTableGenerator(
-                file = os.path.join(args.results, f"{cat}.csv"),
-                header=["test", "answer", "t_backend", "t_solver", "paths"]
-            )
-            lock = Lock()
-            size, prev, curr = len(benchmarks), 0, 0
-            conf = {
-                    "prop" : args.property,
-                    "size" : size,
-                    "backend" : args.backend,
-                    "table" : table,
-            }
-            results = executor.map(lambda b : run_benchmark(lock, conf, b), benchmarks)
-            for _ in results:
-                pass
+        info(f"Analysing Test-Comp benchmarks.", prefix="\n")
+        table = CSVTableGenerator(
+            file = os.path.join(args.results, f"all.csv"),
+            header=["test", "answer", "t_backend", "t_solver", "paths"]
+        )
+        lock = Lock()
+        size, prev, curr = len(n_tasks), 0, 0
+        conf = {
+                "prop" : args.property,
+                "size" : size,
+                "backend" : args.backend,
+                "table" : table,
+        }
+        results = executor.map(lambda b : run_benchmark(lock, conf, b), n_tasks)
+        for _ in results:
+            pass
 
     return 0
 
