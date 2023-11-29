@@ -7,6 +7,7 @@ import glob
 import yaml
 import json
 import time
+import signal
 import resource
 import argparse
 import subprocess
@@ -188,10 +189,11 @@ def parse_tasks(conf):
                 tasks[name] = tasks[name].difference(set(tasks_set))
     return tasks
 
-def limit_ram(limit):
-    return lambda: resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+def preexec_fn():
+    resource.setrlimit(resource.RLIMIT_AS, (VRAM_LIMIT, VRAM_LIMIT))
+    os.setsid()
 
-def execute(benchmark, output_dir, backend, prop):
+def execute(benchmark, output_dir, _, prop):
     result = {
         "runtime" : 0.0,
         "answer" : "Timeout",
@@ -200,20 +202,18 @@ def execute(benchmark, output_dir, backend, prop):
     }
     start = time.time()
     cmd = [
-        "wasp-c", benchmark,
+        "owic", benchmark,
         "--output", output_dir,
-        "-I", "../wasp-private/share/libc"
-#       "--backend", backend,
-#       "--test-comp",
-#       "--property", prop,
-#       "--arch", "32",
-#       "--timeout", "900"
+        "--test-comp",
+        "--property", prop,
+        "--arch", "32",
     ]
     proc = subprocess.Popen(
         cmd,
+        shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        preexec_fn=limit_ram(VRAM_LIMIT))
+        preexec_fn=preexec_fn)
     try:
         _, _ = proc.communicate(timeout=900.0)
         report = parse_report(os.path.join(output_dir, "report.json"))
@@ -222,8 +222,7 @@ def execute(benchmark, output_dir, backend, prop):
         result["paths_explored"] = int(report["paths_explored"])
     except subprocess.TimeoutExpired:
         result["answer"] = "Timeout"
-        proc.kill()
-        proc.communicate()
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
     result["runtime"] = time.time() - start
     return result
 
