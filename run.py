@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import os
-from re import sub, subn
 import sys
 import csv
 import glob
@@ -34,6 +33,7 @@ PREFIX = "\033["
 SUFFIX = "\033[0m"
 
 VRAM_LIMIT = 15 * 1024 * 1024 * 1024
+
 
 def progress(msg, curr, total, prev=0):
     status = round((curr / total) * 100)
@@ -73,6 +73,7 @@ def indent(msg, prefix=None):
     sys.stdout.write(f"[{ident_str}] {msg}\n")
     sys.stdout.flush()
 
+
 class RowLengthDiffersException(Exception):
     def __init__(self, len1, len2):
         self.len1 = len1
@@ -82,6 +83,7 @@ class RowLengthDiffersException(Exception):
 
     def __str__(self):
         return self.message
+
 
 class CSVTableGenerator:
     def __init__(self, file='result.csv', header=[], memory=False):
@@ -125,13 +127,14 @@ def get_parser():
     parser.add_argument("-j", "--jobs", dest="jobs", action="store", type=int,
                         default=1, help="number of jobs to run in parallel")
     parser.add_argument("-c", "--conf", dest="conf", action="store",
-                        default="share/wasp-c.xml")
+                        default="bench-defs/benchmark-defs/owic.xml")
     parser.add_argument("--results", dest="results", action="store",
                         default="results")
     parser.add_argument("--backend", dest="backend", action="store",
                         default="share/backend/wasp-ce.json")
+    default_property = "sv-benchmarks/c/properties/coverage-error-call.prp"
     parser.add_argument("--property", dest="property", action="store",
-        default="sv-benchmarks/c/properties/coverage-error-call.prp")
+                        default=default_property)
     parser.add_argument("--validate", dest="validate", action="store",
                         default=None)
     return parser
@@ -146,18 +149,20 @@ def parse_report(f):
         with open(f, "r") as fd:
             return json.load(fd)
     except:
-        return { "specification" : "Timeout", "solver_time" : 0.0,
-                "paths_explored" : 0 }
+        return {"specification": "Timeout", "solver_time": 0.0,
+                "paths_explored": 0}
+
 
 def parse_yaml(f):
     with open(f, "r") as fd:
         return yaml.load(fd, Loader=yaml.SafeLoader)
 
+
 def parse_list(f):
     with open(f, "r") as fd:
         data = fd.readlines()
-    return list(map(lambda l: l.strip(),
-                    filter(lambda l: not l.startswith("#"), data)))
+    return list(map(lambda line: line.strip(),
+                    filter(lambda line: not line.startswith("#"), data)))
 
 
 def parse_tasks(conf):
@@ -189,16 +194,18 @@ def parse_tasks(conf):
                 tasks[name] = tasks[name].difference(set(tasks_set))
     return tasks
 
+
 def preexec_fn():
     resource.setrlimit(resource.RLIMIT_AS, (VRAM_LIMIT, VRAM_LIMIT))
     os.setsid()
 
+
 def execute(benchmark, output_dir, _, prop):
     result = {
-        "runtime" : 0.0,
-        "answer" : "Timeout",
-        "solver_time" : 0.0,
-        "paths_explored" : 0
+        "runtime": 0.0,
+        "answer": "Timeout",
+        "solver_time": 0.0,
+        "paths_explored": 0
     }
     start = time.time()
     cmd = [
@@ -228,6 +235,7 @@ def execute(benchmark, output_dir, _, prop):
     result["runtime"] = time.time() - start
     return result
 
+
 def run_benchmark(lock, conf, benchmark):
     global prev
     global curr
@@ -238,7 +246,7 @@ def run_benchmark(lock, conf, benchmark):
     table = conf["table"]
     lock.acquire()
     curr += 1
-    prev = progress(f"Running {benchmark}", curr, size, prev = prev)
+    prev = progress(f"Running {benchmark}", curr, size, prev=prev)
     lock.release()
 
     benchmark_conf = parse_yaml(benchmark)
@@ -284,24 +292,25 @@ def run_tasks(tasks, args):
     for _, benchmarks in tasks.items():
         n_tasks += benchmarks
     with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-        info(f"Analysing Test-Comp benchmarks.", prefix="\n")
+        info("Analysing Test-Comp benchmarks.", prefix="\n")
         table = CSVTableGenerator(
-            file = os.path.join(args.results, f"all.csv"),
+            file=os.path.join(args.results, "all.csv"),
             header=["test", "answer", "t_backend", "t_solver", "paths"]
         )
         lock = Lock()
         size, prev, curr = len(n_tasks), 0, 0
         conf = {
-                "prop" : args.property,
-                "size" : size,
-                "backend" : args.backend,
-                "table" : table,
+                "prop": args.property,
+                "size": size,
+                "backend": args.backend,
+                "table": table,
         }
         results = executor.map(lambda b : run_benchmark(lock, conf, b), n_tasks)
         for _ in results:
             pass
 
     return 0
+
 
 def validate(conf):
     (bench, args) = conf
@@ -336,7 +345,7 @@ def validate(conf):
         os.makedirs(output_dir)
     subprocess.run(
         [
-            "/home/fmarques/test-suite-validator/bin/testcov", benchmark_file,
+            "test-suite-validator/bin/testcov", benchmark_file,
             "--no-plots",
             "--no-isolation",
             "--memlimit", "6GB",
@@ -350,6 +359,7 @@ def validate(conf):
     if os.path.exists(aux_file):
         os.remove(aux_file)
     return 0
+
 
 def validate_tasks(tasks, args):
     info("Starting Test-Comp validation...")
@@ -368,6 +378,7 @@ def main(argv=None):
     if not args.validate:
         return run_tasks(tasks, args)
     return validate_tasks(tasks, args)
+
 
 if __name__ == "__main__":
     sys.exit(main())
