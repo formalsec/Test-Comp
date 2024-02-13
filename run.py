@@ -25,7 +25,7 @@ MAPPING = {
     "blue": 94,
     "purple": 95,
     "cyan": 96,
-    "white": 97
+    "white": 97,
 }
 
 BOLD = "\033[1m"
@@ -33,6 +33,8 @@ PREFIX = "\033["
 SUFFIX = "\033[0m"
 
 VRAM_LIMIT = 15 * 1024 * 1024 * 1024
+
+OUTPUT_DIR = "owic-out"
 
 
 def progress(msg, curr, total, prev=0):
@@ -78,7 +80,7 @@ class RowLengthDiffersException(Exception):
     def __init__(self, len1, len2):
         self.len1 = len1
         self.len2 = len2
-        self.message = f'Expected row length of \'{len1}\' but got \'{len2}\''
+        self.message = f"Expected row length of '{len1}' but got '{len2}'"
         super().__init__(self.message)
 
     def __str__(self):
@@ -86,14 +88,14 @@ class RowLengthDiffersException(Exception):
 
 
 class CSVTableGenerator:
-    def __init__(self, file='result.csv', header=[], memory=False):
+    def __init__(self, file="result.csv", header=[], memory=False):
         self.file = file
         self.header = header
         self.memory = memory
         self.rsize = len(header)
         self.table = []
 
-        with open(self.file, 'w') as f:
+        with open(self.file, "w") as f:
             writer = csv.writer(f)
             writer.writerow(self.header)
 
@@ -107,36 +109,50 @@ class CSVTableGenerator:
         if self.memory:
             self.table.append(row)
         else:
-            with open(self.file, 'a') as f:
+            with open(self.file, "a") as f:
                 writer = csv.writer(f)
                 writer.writerow(row)
 
     def commit(self):
         if self.memory:
-            with open(self.file, 'a') as f:
+            with open(self.file, "a") as f:
                 writer = csv.writer(f)
                 writer.writerows(self.table)
 
 
 def get_parser():
     parser = argparse.ArgumentParser(
-        prog="run.py",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+        prog="run.py", formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
 
-    parser.add_argument("-j", "--jobs", dest="jobs", action="store", type=int,
-                        default=1, help="number of jobs to run in parallel")
-    parser.add_argument("-c", "--conf", dest="conf", action="store",
-                        default="bench-defs/benchmark-defs/owic.xml")
-    parser.add_argument("--results", dest="results", action="store",
-                        default="results")
-    parser.add_argument("--backend", dest="backend", action="store",
-                        default="share/backend/wasp-ce.json")
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        dest="jobs",
+        action="store",
+        type=int,
+        default=1,
+        help="number of jobs to run in parallel",
+    )
+    parser.add_argument(
+        "-c",
+        "--conf",
+        dest="conf",
+        action="store",
+        default="bench-defs/benchmark-defs/owic.xml",
+    )
+    parser.add_argument("--results", dest="results", action="store", default="results")
+    parser.add_argument(
+        "--backend",
+        dest="backend",
+        action="store",
+        default="share/backend/wasp-ce.json",
+    )
     default_property = "sv-benchmarks/c/properties/coverage-error-call.prp"
-    parser.add_argument("--property", dest="property", action="store",
-                        default=default_property)
-    parser.add_argument("--validate", dest="validate", action="store",
-                        default=None)
+    parser.add_argument(
+        "--property", dest="property", action="store", default=default_property
+    )
+    parser.add_argument("--validate", dest="validate", action="store", default=None)
     return parser
 
 
@@ -149,8 +165,7 @@ def parse_report(f):
         with open(f, "r") as fd:
             return json.load(fd)
     except:
-        return {"specification": "Timeout", "solver_time": 0.0,
-                "paths_explored": 0}
+        return {"specification": "Timeout", "solver_time": 0.0, "paths_explored": 0}
 
 
 def parse_yaml(f):
@@ -161,8 +176,12 @@ def parse_yaml(f):
 def parse_list(f):
     with open(f, "r") as fd:
         data = fd.readlines()
-    return list(map(lambda line: line.strip(),
-                    filter(lambda line: not line.startswith("#"), data)))
+    return list(
+        map(
+            lambda line: line.strip(),
+            filter(lambda line: not line.startswith("#"), data),
+        )
+    )
 
 
 def parse_tasks(conf):
@@ -205,24 +224,31 @@ def execute(benchmark, output_dir, _, prop):
         "runtime": 0.0,
         "answer": "Timeout",
         "solver_time": 0.0,
-        "paths_explored": 0
+        "paths_explored": 0,
     }
     start = time.time()
     cmd = [
-        "owi", "c", benchmark,
+        "owi",
+        "c",
+        benchmark,
         "--unsafe",
-        "-o", output_dir,
+        "-o",
+        output_dir,
         "--testcomp",
-        "--property", prop,
-        "--arch", "32",
-        "-w", "2"
+        "--property",
+        prop,
+        "--arch",
+        "32",
+        "-w",
+        "2",
     ]
     proc = subprocess.Popen(
         " ".join(cmd),
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        preexec_fn=preexec_fn)
+        preexec_fn=preexec_fn,
+    )
     try:
         _, _ = proc.communicate(timeout=900.0)
         report = parse_report(os.path.join(output_dir, "report.json"))
@@ -260,22 +286,25 @@ def run_benchmark(lock, conf, benchmark):
     if skip:
         return None
 
-    benchmark_file = os.path.join(os.path.dirname(benchmark),
-                                  benchmark_conf["input_files"])
+    benchmark_file = os.path.join(
+        os.path.dirname(benchmark), benchmark_conf["input_files"]
+    )
     output_dir = os.path.join(
-        "wasp-out",
+        OUTPUT_DIR,
         os.path.basename(os.path.dirname(benchmark_file)),
-        os.path.basename(benchmark_file)
+        os.path.basename(benchmark_file),
     )
     result = execute(benchmark_file, output_dir, backend, prop)
     lock.acquire()
-    table.add_row([
-        benchmark_file,
-        result["answer"],
-        result["runtime"],
-        result["solver_time"],
-        result["paths_explored"]
-    ])
+    table.add_row(
+        [
+            benchmark_file,
+            result["answer"],
+            result["runtime"],
+            result["solver_time"],
+            result["paths_explored"],
+        ]
+    )
     lock.release()
 
 
@@ -295,17 +324,17 @@ def run_tasks(tasks, args):
         info("Analysing Test-Comp benchmarks.", prefix="\n")
         table = CSVTableGenerator(
             file=os.path.join(args.results, "all.csv"),
-            header=["test", "answer", "t_backend", "t_solver", "paths"]
+            header=["test", "answer", "t_backend", "t_solver", "paths"],
         )
         lock = Lock()
         size, prev, curr = len(n_tasks), 0, 0
         conf = {
-                "prop": args.property,
-                "size": size,
-                "backend": args.backend,
-                "table": table,
+            "prop": args.property,
+            "size": size,
+            "backend": args.backend,
+            "table": table,
         }
-        results = executor.map(lambda b : run_benchmark(lock, conf, b), n_tasks)
+        results = executor.map(lambda b: run_benchmark(lock, conf, b), n_tasks)
         for _ in results:
             pass
 
@@ -324,13 +353,12 @@ def validate(conf):
             break
     if skip:
         return 1
-    benchmark_file = os.path.join(os.path.dirname(bench),
-                                  bench_conf["input_files"])
+    benchmark_file = os.path.join(os.path.dirname(bench), bench_conf["input_files"])
     testsuite = os.path.join(
         args.validate,
         os.path.basename(os.path.dirname(benchmark_file)),
         os.path.basename(benchmark_file),
-        "test-suite"
+        "test-suite",
     )
     if not os.path.exists(testsuite):
         return 1
@@ -345,15 +373,20 @@ def validate(conf):
         os.makedirs(output_dir)
     subprocess.run(
         [
-            "test-suite-validator/bin/testcov", benchmark_file,
+            "test-suite-validator/bin/testcov",
+            benchmark_file,
             "--no-plots",
             "--no-isolation",
-            "--memlimit", "6GB",
-            "--timelimit-per-run", "50",
-            "--test-suite", testsuite,
-            "--output", output_dir
+            "--memlimit",
+            "6GB",
+            "--timelimit-per-run",
+            "50",
+            "--test-suite",
+            testsuite,
+            "--output",
+            output_dir,
         ],
-        check=True
+        check=True,
     )
     aux_file = "instrumented_" + os.path.basename(benchmark_file) + ".gcov"
     if os.path.exists(aux_file):
@@ -365,7 +398,7 @@ def validate_tasks(tasks, args):
     info("Starting Test-Comp validation...")
     info(f"property={args.property}")
     for cat, benchmarks in tasks.items():
-        info(f"Validating \"{cat}\"...", prefix="\n")
+        info(f'Validating "{cat}"...', prefix="\n")
         list(map(validate, [(bench, args) for bench in benchmarks]))
     return 0
 
