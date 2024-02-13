@@ -139,7 +139,7 @@ def get_parser():
         "--conf",
         dest="conf",
         action="store",
-        default="bench-defs/benchmark-defs/owic.xml",
+        default="share/owic.xml",
     )
     parser.add_argument("--results", dest="results", action="store", default="results")
     parser.add_argument(
@@ -250,11 +250,14 @@ def execute(benchmark, output_dir, _, prop):
         preexec_fn=preexec_fn,
     )
     try:
-        _, _ = proc.communicate(timeout=900.0)
-        report = parse_report(os.path.join(output_dir, "report.json"))
-        result["answer"] = str(report["specification"])
-        result["solver_time"] = float(report["solver_time"])
-        result["paths_explored"] = int(report["paths_explored"])
+        _, err = proc.communicate(timeout=900.0)
+        output = err.decode("utf-8")
+        answer = True if "Reached problem!" in output else False
+        result["answer"] = answer
+        # report = parse_report(os.path.join(output_dir, "report.json"))
+        # result["answer"] = str(report["specification"])
+        # result["solver_time"] = float(report["solver_time"])
+        # result["paths_explored"] = int(report["paths_explored"])
     except subprocess.TimeoutExpired:
         result["answer"] = "Timeout"
         os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
