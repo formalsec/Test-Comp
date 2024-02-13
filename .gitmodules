@@ -1,3 +1,9 @@
 [submodule "sv-benchmarks"]
 	path = sv-benchmarks
 	url = https://gitlab.com/sosy-lab/benchmarking/sv-benchmarks.git
+[submodule "bench-defs"]
+	path = bench-defs
+	url = https://gitlab.com/sosy-lab/test-comp/bench-defs.git
+[submodule "test-suite-validator"]
+	path = test-suite-validator
+	url = https://gitlab.com/sosy-lab/software/test-suite-validator.git
