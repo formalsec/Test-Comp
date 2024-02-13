@@ -202,14 +202,16 @@ def execute(benchmark, output_dir, _, prop):
     }
     start = time.time()
     cmd = [
-        "owic", benchmark,
-        "--output", output_dir,
-        "--test-comp",
+        "owi", "c", benchmark,
+        "--unsafe",
+        "-o", output_dir,
+        "--testcomp",
         "--property", prop,
         "--arch", "32",
+        "-w", "2"
     ]
     proc = subprocess.Popen(
-        cmd,
+        " ".join(cmd),
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
