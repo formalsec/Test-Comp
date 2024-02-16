@@ -3,10 +3,9 @@
 - Clone the repository and submodules
 
 ```shell-session
-$ git clone git@github.com:formalsec/Test-Comp.git
+$ git clone https://github.com/formalsec/Test-Comp.git
 $ cd Test-Comp
-$ git submodule init
-$ git submodule update
+$ git submodule update --init
 ```
 
 - Run the script
